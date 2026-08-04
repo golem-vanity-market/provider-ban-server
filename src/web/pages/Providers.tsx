@@ -264,7 +264,16 @@ export default function Providers() {
               <span className="font-medium">
                 {row.original.name ?? shortId(row.original.providerId)}
               </span>
-            </Link>
+            </Link>{" "}
+            <a
+              href={row.original.statsGolemUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="ext-link text-xs"
+              title="Provider on stats.golem.network"
+            >
+              ↗
+            </a>
             <div className="truncate text-xs" style={{ color: "var(--text-muted)" }}>
               {shortId(row.original.providerId)}
             </div>
