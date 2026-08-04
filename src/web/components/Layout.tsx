@@ -15,7 +15,7 @@ const linkStyle = ({ isActive }: { isActive: boolean }) =>
 
 export default function Layout() {
   return (
-    <div className="mx-auto max-w-6xl px-4 pb-16">
+    <div className="w-full px-4 pb-16">
       <header className="flex flex-wrap items-center gap-4 py-4">
         <div className="flex items-center gap-2">
           <svg
