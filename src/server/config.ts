@@ -43,6 +43,15 @@ export const config = {
   defaultEfficiencyTarget: num("DEFAULT_EFFICIENCY_TARGET", 0.07), // TH/GLM
   defaultSpeedTarget: num("DEFAULT_SPEED_TARGET", 500_000), // H/s
 
+  // Auto-relax: proven providers (enough recent work at well-above-baseline
+  // efficiency) automatically get their enforcement targets lowered to
+  // global / autoRelaxDivisor, and lose the relaxation when they stop
+  // qualifying. Manual overrides are never touched.
+  autoRelaxEnabled: num("AUTO_RELAX_ENABLED", 1) !== 0,
+  autoRelaxMinWork24h: num("AUTO_RELAX_MIN_WORK_24H", 100e9), // hashes
+  autoRelaxEffFactor: num("AUTO_RELAX_EFF_FACTOR", 2), // × global eff target
+  autoRelaxDivisor: num("AUTO_RELAX_DIVISOR", 2),
+
   // Scoring / categorization knobs.
   effTarget: num("EFF_TARGET", 0.15), // TH/GLM considered "full marks"
   volumeTargetHours: num("VOLUME_TARGET_HOURS", 200),

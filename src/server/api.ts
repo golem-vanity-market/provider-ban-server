@@ -110,6 +110,7 @@ function targetsIndex(store: Store): TargetsIndex {
       efficiencyTarget: r.efficiency_target,
       speedTarget: r.speed_target,
       note: r.note,
+      auto: r.auto === 1,
       updatedAt: r.updated_at,
     })),
     effectiveFor: (providerId: string): EffectiveTargets => {
@@ -120,6 +121,7 @@ function targetsIndex(store: Store): TargetsIndex {
         override:
           o !== undefined &&
           (o.efficiency_target != null || o.speed_target != null),
+        auto: o?.auto === 1,
         note: o?.note ?? null,
       };
     },

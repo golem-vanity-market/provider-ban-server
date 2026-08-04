@@ -67,6 +67,7 @@ export interface EffectiveTargets {
   efficiencyTarget: number; // TH/GLM
   speedTarget: number; // H/s
   override: boolean; // true when a per-provider override applies
+  auto: boolean; // override was set by the auto-relax tuner, not a human
   note: string | null;
 }
 
@@ -75,6 +76,7 @@ export interface TargetOverride {
   efficiencyTarget: number | null;
   speedTarget: number | null;
   note: string | null;
+  auto: boolean;
   updatedAt: string;
 }
 

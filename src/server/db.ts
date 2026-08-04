@@ -64,6 +64,7 @@ export interface TargetRow {
   efficiency_target: number | null;
   speed_target: number | null;
   note: string | null;
+  auto: number; // 1 = managed by the auto-relax tuner, 0 = set manually
   updated_at: string;
 }
 
@@ -120,9 +121,16 @@ export function openDb(path = config.dbPath): Database {
       efficiency_target REAL,
       speed_target REAL,
       note TEXT,
+      auto INTEGER NOT NULL DEFAULT 0,
       updated_at TEXT NOT NULL
     );
   `);
+  const targetCols = db
+    .query(`PRAGMA table_info(targets)`)
+    .all() as { name: string }[];
+  if (!targetCols.some((c) => c.name === "auto")) {
+    db.exec(`ALTER TABLE targets ADD COLUMN auto INTEGER NOT NULL DEFAULT 0;`);
+  }
   return db;
 }
 
@@ -519,7 +527,7 @@ export class Store {
   listTargets(): TargetRow[] {
     return this.db
       .query(
-        `SELECT provider_id, efficiency_target, speed_target, note, updated_at
+        `SELECT provider_id, efficiency_target, speed_target, note, auto, updated_at
          FROM targets ORDER BY provider_id`,
       )
       .all() as TargetRow[];
@@ -530,15 +538,17 @@ export class Store {
     efficiencyTarget: number | null;
     speedTarget: number | null;
     note: string | null;
+    auto?: boolean;
   }): void {
     this.db
       .query(
-        `INSERT INTO targets (provider_id, efficiency_target, speed_target, note, updated_at)
-         VALUES ($id, $eff, $speed, $note, $now)
+        `INSERT INTO targets (provider_id, efficiency_target, speed_target, note, auto, updated_at)
+         VALUES ($id, $eff, $speed, $note, $auto, $now)
          ON CONFLICT(provider_id) DO UPDATE SET
            efficiency_target = excluded.efficiency_target,
            speed_target = excluded.speed_target,
            note = excluded.note,
+           auto = excluded.auto,
            updated_at = excluded.updated_at`,
       )
       .run({
@@ -546,6 +556,7 @@ export class Store {
         $eff: params.efficiencyTarget,
         $speed: params.speedTarget,
         $note: params.note,
+        $auto: params.auto ? 1 : 0,
         $now: new Date().toISOString(),
       });
   }

@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
 import { config } from "./config.ts";
+import { applyAutoRelax } from "./auto_relax.ts";
+import { invalidateSummaries } from "./api.ts";
 import type { Store, AgreementUpsert } from "./db.ts";
 import type { NodeStatus } from "../shared/types.ts";
 
@@ -207,6 +209,9 @@ export class Collector {
     await this.loadNodes();
     await Promise.all(this.nodes.map((n) => this.collectNode(n)));
     this.lastCollectedAt = new Date().toISOString();
+    if (applyAutoRelax(this.store) > 0) {
+      invalidateSummaries();
+    }
   }
 
   start(): void {

@@ -357,13 +357,19 @@ export default function Providers() {
                     <div
                       className="text-xs whitespace-nowrap"
                       style={{
-                        color: p.targets.override
-                          ? "var(--status-warning)"
-                          : "var(--text-muted)",
+                        color: !p.targets.override
+                          ? "var(--text-muted)"
+                          : p.targets.auto
+                            ? "var(--status-good)"
+                            : "var(--status-warning)",
                       }}
                     >
                       {fmtSpeed(p.targets.speedTarget)}
-                      {p.targets.override ? " · override" : ""}
+                      {p.targets.override
+                        ? p.targets.auto
+                          ? " · auto"
+                          : " · override"
+                        : ""}
                     </div>
                   </td>
                   <td>
