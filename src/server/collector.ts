@@ -198,7 +198,10 @@ export class Collector {
           this.store.insertBan({
             providerId,
             source: node.nodeName,
-            reason: `reported by ${node.nodeName} (efficiency below requirement or failed command)`,
+            // The stone list carries no reasons; the stone's own POST (with
+            // the detailed measured-vs-target reason) usually arrives first
+            // and wins the (provider, source) idempotency slot.
+            reason: `reported by ${node.nodeName} (stone-local ban, no detail)`,
             agreementId: null,
           });
         }
