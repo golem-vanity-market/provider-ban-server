@@ -89,6 +89,78 @@ table.data tbody tr:hover {
   background: color-mix(in oklab, var(--series-1) 6%, transparent);
 }
 
+/* Virtualized providers grid (TanStack table + virtual) — its own
+   scrollbar, sticky header, hand-resizable columns. */
+.gt-scroll {
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.gt-head {
+  display: flex;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--grid);
+}
+.gt-th {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.5rem 0.6rem;
+  white-space: nowrap;
+}
+.gt-resizer {
+  position: absolute;
+  right: 0;
+  top: 0;
+  height: 100%;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+}
+.gt-resizer::after {
+  content: "";
+  position: absolute;
+  right: 2px;
+  top: 20%;
+  height: 60%;
+  width: 1px;
+  background: var(--grid);
+}
+.gt-resizer:hover::after,
+.gt-resizer.is-resizing::after {
+  width: 3px;
+  right: 1px;
+  background: var(--series-1);
+}
+.gt-tr {
+  display: flex;
+  position: absolute;
+  top: 0;
+  left: 0;
+  align-items: center;
+  border-bottom: 1px solid var(--grid);
+}
+.gt-tr:hover {
+  background: color-mix(in oklab, var(--series-1) 6%, transparent);
+}
+.gt-td {
+  flex: 0 0 auto;
+  overflow: hidden;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
 .viz-tooltip {
   position: fixed;
   z-index: 50;

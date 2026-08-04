@@ -1,5 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import {
+  flexRender,
+  getCoreRowModel,
+  useReactTable,
+  type ColumnDef,
+  type ColumnSizingState,
+} from "@tanstack/react-table";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { api } from "../api.ts";
 import type {
   ProviderCategory,
@@ -14,6 +22,7 @@ import {
   fmtEff,
   fmtGlm,
   fmtHours,
+  fmtIn,
   fmtSpeed,
   fmtWork,
   shortId,
@@ -31,7 +40,6 @@ const CATEGORIES: (ProviderCategory | "")[] = [
   "banned",
 ];
 
-// score, name and lastSeen are window-independent; the rest follow the window
 const SEEN_OPTIONS = [
   { value: "1d", label: "Active in 24 hours" },
   { value: "7d", label: "Active in 7 days" },
@@ -39,17 +47,29 @@ const SEEN_OPTIONS = [
   { value: "all", label: "All providers" },
 ];
 
-const SORTS = [
-  { key: "score", label: "Score", windowed: false },
-  { key: "efficiency", label: "Efficiency", windowed: true },
-  { key: "work", label: "Work", windowed: true },
-  { key: "hours", label: "Hours", windowed: true },
-  { key: "cost", label: "Spend", windowed: true },
-  { key: "agreements", label: "Agreements", windowed: true },
-  { key: "bans", label: "Bans", windowed: true },
-  { key: "lastSeen", label: "Last seen", windowed: false },
-  { key: "lastAgreement", label: "Last agreement", windowed: false },
-];
+// Columns whose data the backend can sort on (sorting stays server-side).
+const SORT_KEYS: Record<string, string> = {
+  score: "score",
+  efficiency: "efficiency",
+  work: "work",
+  hours: "hours",
+  cost: "cost",
+  agreements: "agreements",
+  bans: "bans",
+  lastSeen: "lastSeen",
+  lastAgreement: "lastAgreement",
+};
+
+const SIZES_KEY = "banserver.providers.colsizes.v1";
+const ROW_HEIGHT = 52;
+
+function loadSizes(): ColumnSizingState {
+  try {
+    return JSON.parse(localStorage.getItem(SIZES_KEY) ?? "{}");
+  } catch {
+    return {};
+  }
+}
 
 /** View + edit the fleet-wide enforcement target (stones terminate & ban
  *  below it; per-provider overrides win over this). */
@@ -181,7 +201,6 @@ export default function Providers() {
   const [seen, setSeen] = useState("1d");
   const [sort, setSort] = useState("score");
   const [dir, setDir] = useState<"desc" | "asc">("desc");
-  const [limit, setLimit] = useState(50);
   const [loading, setLoading] = useState(true);
   const [refreshTick, setRefreshTick] = useState(0);
   const windowKey = useWindowKey();
@@ -193,10 +212,10 @@ export default function Providers() {
       seen,
       sort,
       dir,
-      limit,
+      limit: 5000, // virtualized grid renders only visible rows — load everything
       window: WINDOW_PARAM[windowKey],
     }),
-    [search, category, seen, sort, dir, limit, windowKey],
+    [search, category, seen, sort, dir, windowKey],
   );
 
   useEffect(() => {
@@ -229,6 +248,290 @@ export default function Providers() {
   };
 
   const suffix = ` (${WINDOW_SHORT[windowKey]})`;
+
+  const columns = useMemo<ColumnDef<ProviderSummary>[]>(
+    () => [
+      {
+        id: "provider",
+        header: "Provider",
+        size: 190,
+        cell: ({ row }) => (
+          <div className="min-w-0">
+            <Link
+              to={`/providers/${row.original.providerId}`}
+              className="ext-link"
+            >
+              <span className="font-medium">
+                {row.original.name ?? shortId(row.original.providerId)}
+              </span>
+            </Link>
+            <div className="truncate text-xs" style={{ color: "var(--text-muted)" }}>
+              {shortId(row.original.providerId)}
+            </div>
+          </div>
+        ),
+      },
+      {
+        id: "category",
+        header: "Category",
+        size: 112,
+        cell: ({ row }) => <CategoryBadge category={row.original.category} />,
+      },
+      {
+        id: "score",
+        header: "Score",
+        size: 110,
+        cell: ({ row }) => <ScoreMeter score={row.original.score} />,
+      },
+      {
+        id: "efficiency",
+        header: `Efficiency${suffix}`,
+        size: 118,
+        cell: ({ row }) => (
+          <span className="tnum">
+            {fmtEff(row.original.stats.windows[windowKey].efficiency)}
+          </span>
+        ),
+      },
+      {
+        id: "work",
+        header: `Work${suffix}`,
+        size: 92,
+        cell: ({ row }) => (
+          <span className="tnum">
+            {fmtWork(row.original.stats.windows[windowKey].work)}
+          </span>
+        ),
+      },
+      {
+        id: "speed",
+        header: `Speed${suffix}`,
+        size: 100,
+        cell: ({ row }) => (
+          <span className="tnum">
+            {fmtSpeed(row.original.stats.windows[windowKey].avgSpeed)}
+          </span>
+        ),
+      },
+      {
+        id: "hours",
+        header: `Hours${suffix}`,
+        size: 84,
+        cell: ({ row }) => (
+          <span className="tnum">
+            {fmtHours(row.original.stats.windows[windowKey].hours)}
+          </span>
+        ),
+      },
+      {
+        id: "cost",
+        header: `Spend${suffix}`,
+        size: 100,
+        cell: ({ row }) => (
+          <span className="tnum">
+            {fmtGlm(row.original.stats.windows[windowKey].cost, 2)}
+          </span>
+        ),
+      },
+      {
+        id: "price",
+        header: `Price${suffix}`,
+        size: 104,
+        cell: ({ row }) => {
+          const p = row.original.stats.windows[windowKey].avgCostPerHour;
+          return (
+            <span className="tnum">
+              {p == null ? "—" : `${fmtGlm(p, 3).replace(" GLM", "")} GLM/h`}
+            </span>
+          );
+        },
+      },
+      {
+        id: "agreements",
+        header: `Agreements${suffix}`,
+        size: 118,
+        cell: ({ row }) => (
+          <span className="tnum">
+            {row.original.stats.windows[windowKey].agreements}
+          </span>
+        ),
+      },
+      {
+        id: "pows",
+        header: "PoW (all)",
+        size: 84,
+        cell: ({ row }) => (
+          <span className="tnum">{row.original.stats.successes}</span>
+        ),
+      },
+      {
+        id: "bans",
+        header: `Bans${suffix}`,
+        size: 76,
+        cell: ({ row }) => {
+          const b = row.original.stats.windows[windowKey].bans;
+          return b > 0 ? (
+            <span className="tnum" style={{ color: "var(--status-critical)" }}>
+              {b}
+            </span>
+          ) : (
+            <span className="tnum">0</span>
+          );
+        },
+      },
+      {
+        id: "dailyBans",
+        header: "Bans today",
+        size: 100,
+        cell: ({ row }) => (
+          <div>
+            <span className="tnum">{row.original.stats.dailyBans}</span>
+            <div className="text-xs tnum" style={{ color: "var(--text-muted)" }}>
+              next {row.original.stats.nextBanHours}h
+            </div>
+          </div>
+        ),
+      },
+      {
+        id: "activeBan",
+        header: "Active ban",
+        size: 130,
+        cell: ({ row }) => {
+          const b = row.original.stats.activeBan;
+          if (!b) return <span style={{ color: "var(--text-muted)" }}>—</span>;
+          return (
+            <div>
+              <span style={{ color: "var(--status-critical)" }}>
+                by {b.source}
+              </span>
+              <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+                expires {fmtIn(b.expiresAt)}
+              </div>
+            </div>
+          );
+        },
+      },
+      {
+        id: "lastSeen",
+        header: "Last seen",
+        size: 96,
+        cell: ({ row }) => fmtAgo(row.original.stats.lastSeen),
+      },
+      {
+        id: "lastAgreement",
+        header: "Last agreement",
+        size: 168,
+        cell: ({ row }) => {
+          const la = row.original.stats.lastAgreement;
+          if (!la) return "—";
+          return (
+            <div>
+              {fmtAgo(la.lastUpdated)}
+              <div className="text-xs tnum" style={{ color: "var(--text-muted)" }}>
+                {la.successes} PoW · {fmtWork(la.work)} ·{" "}
+                {fmtHours(la.durationHours)}
+              </div>
+            </div>
+          );
+        },
+      },
+      {
+        id: "firstSeen",
+        header: "First seen",
+        size: 96,
+        cell: ({ row }) => fmtAgo(row.original.stats.firstSeen),
+      },
+      {
+        id: "target",
+        header: "Target",
+        size: 140,
+        cell: ({ row }) => {
+          const t = row.original.targets;
+          return (
+            <div>
+              <span className="tnum">{fmtEff(t.efficiencyTarget)}</span>
+              <div
+                className="text-xs tnum"
+                style={{
+                  color: !t.override
+                    ? "var(--text-muted)"
+                    : t.auto
+                      ? "var(--status-good)"
+                      : "var(--status-warning)",
+                }}
+              >
+                {fmtSpeed(t.speedTarget)}
+                {t.override ? (t.auto ? " · auto" : " · override") : ""}
+              </div>
+            </div>
+          );
+        },
+      },
+      {
+        id: "links",
+        header: "Links",
+        size: 70,
+        cell: ({ row }) => (
+          <a
+            href={row.original.statsGolemUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="ext-link text-xs"
+            title="Provider on stats.golem.network"
+          >
+            stats ↗
+          </a>
+        ),
+      },
+    ],
+    [windowKey, suffix],
+  );
+
+  // Hand-resized column widths, persisted across sessions.
+  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>(loadSizes);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIZES_KEY, JSON.stringify(columnSizing));
+    } catch {
+      /* private mode etc. — resizing still works for the session */
+    }
+  }, [columnSizing]);
+
+  const table = useReactTable({
+    data: providers,
+    columns,
+    state: { columnSizing },
+    onColumnSizingChange: setColumnSizing,
+    columnResizeMode: "onChange",
+    getCoreRowModel: getCoreRowModel(),
+    defaultColumn: { minSize: 56, maxSize: 600 },
+  });
+
+  const { rows } = table.getRowModel();
+
+  // The grid gets its own scrollbar, sized to fill the rest of the viewport.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [gridHeight, setGridHeight] = useState(480);
+  useEffect(() => {
+    const update = () => {
+      const el = scrollRef.current;
+      if (!el) return;
+      const top = el.getBoundingClientRect().top;
+      setGridHeight(Math.max(240, window.innerHeight - top - 16));
+    };
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
+  const rowVirtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 12,
+  });
+
+  const totalWidth = table.getTotalSize();
 
   return (
     <div className="flex flex-col gap-3">
@@ -267,137 +570,92 @@ export default function Providers() {
         <span className="text-xs" style={{ color: "var(--text-muted)" }}>
           {loading ? "Loading…" : `${total} providers`}
         </span>
+        <span className="grow" />
+        {Object.keys(columnSizing).length > 0 && (
+          <button
+            type="button"
+            className="card px-3 py-1 text-xs"
+            title="Reset hand-resized column widths"
+            onClick={() => setColumnSizing({})}
+          >
+            Reset columns
+          </button>
+        )}
       </div>
 
       <div
-        className="card overflow-x-auto"
-        style={{ opacity: loading ? 0.6 : 1 }}
+        ref={scrollRef}
+        className="card gt-scroll"
+        style={{ height: gridHeight, opacity: loading ? 0.6 : 1 }}
       >
-        <table className="data w-full">
-          <thead>
-            <tr>
-              <th>Provider</th>
-              <th>Category</th>
-              {SORTS.map((s) => (
-                <th
-                  key={s.key}
-                  onClick={() => clickSort(s.key)}
-                  className="cursor-pointer select-none"
-                  title={`Sort by ${s.label}`}
-                >
-                  {s.label}
-                  {s.windowed ? suffix : ""}
-                  {sort === s.key ? (dir === "desc" ? " ↓" : " ↑") : ""}
-                </th>
-              ))}
-              <th title="Enforcement target: stones stop work and ban below this">
-                Target
-              </th>
-              <th>Links</th>
-            </tr>
-          </thead>
-          <tbody>
-            {providers.map((p) => {
-              const w = p.stats.windows[windowKey];
+        <div style={{ width: totalWidth, minWidth: "100%" }}>
+          <div className="gt-head">
+            {table.getHeaderGroups().map((hg) =>
+              hg.headers.map((header) => {
+                const sortKey = SORT_KEYS[header.column.id];
+                return (
+                  <div
+                    key={header.id}
+                    className={`gt-th ${sortKey ? "cursor-pointer select-none" : ""}`}
+                    style={{ width: header.getSize() }}
+                    onClick={sortKey ? () => clickSort(sortKey) : undefined}
+                    title={sortKey ? "Click to sort (server-side)" : undefined}
+                  >
+                    <span className="truncate">
+                      {flexRender(
+                        header.column.columnDef.header,
+                        header.getContext(),
+                      )}
+                      {sortKey === sort ? (dir === "desc" ? " ↓" : " ↑") : ""}
+                    </span>
+                    <div
+                      className={`gt-resizer ${
+                        header.column.getIsResizing() ? "is-resizing" : ""
+                      }`}
+                      onMouseDown={header.getResizeHandler()}
+                      onTouchStart={header.getResizeHandler()}
+                      onClick={(e) => e.stopPropagation()}
+                      onDoubleClick={() => header.column.resetSize()}
+                      title="Drag to resize · double-click to reset"
+                    />
+                  </div>
+                );
+              }),
+            )}
+          </div>
+          <div
+            style={{
+              height: rowVirtualizer.getTotalSize(),
+              position: "relative",
+            }}
+          >
+            {rowVirtualizer.getVirtualItems().map((vi) => {
+              const row = rows[vi.index];
               return (
-                <tr key={p.providerId}>
-                  <td>
-                    <Link to={`/providers/${p.providerId}`} className="ext-link">
-                      <span className="font-medium">
-                        {p.name ?? shortId(p.providerId)}
-                      </span>
-                    </Link>
+                <div
+                  key={row.id}
+                  className="gt-tr"
+                  style={{
+                    height: vi.size,
+                    transform: `translateY(${vi.start}px)`,
+                    width: totalWidth,
+                  }}
+                >
+                  {row.getVisibleCells().map((cell) => (
                     <div
-                      className="text-xs"
-                      style={{ color: "var(--text-muted)" }}
+                      key={cell.id}
+                      className="gt-td"
+                      style={{ width: cell.column.getSize() }}
                     >
-                      {shortId(p.providerId)}
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </div>
-                  </td>
-                  <td>
-                    <CategoryBadge category={p.category} />
-                  </td>
-                  <td>
-                    <ScoreMeter score={p.score} />
-                  </td>
-                  <td className="tnum">{fmtEff(w.efficiency)}</td>
-                  <td className="tnum">{fmtWork(w.work)}</td>
-                  <td className="tnum">{fmtHours(w.hours)}</td>
-                  <td className="tnum">{fmtGlm(w.cost, 2)}</td>
-                  <td className="tnum">{w.agreements}</td>
-                  <td className="tnum">
-                    {w.bans > 0 ? (
-                      <span style={{ color: "var(--status-critical)" }}>
-                        {w.bans}
-                      </span>
-                    ) : (
-                      0
-                    )}
-                  </td>
-                  <td>{fmtAgo(p.stats.lastSeen)}</td>
-                  <td>
-                    {p.stats.lastAgreement ? (
-                      <>
-                        {fmtAgo(p.stats.lastAgreement.lastUpdated)}
-                        <div
-                          className="text-xs tnum whitespace-nowrap"
-                          style={{ color: "var(--text-muted)" }}
-                        >
-                          {p.stats.lastAgreement.successes} PoW ·{" "}
-                          {fmtWork(p.stats.lastAgreement.work)} ·{" "}
-                          {fmtHours(p.stats.lastAgreement.durationHours)}
-                        </div>
-                      </>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td className="tnum">
-                    {fmtEff(p.targets.efficiencyTarget)}
-                    <div
-                      className="text-xs whitespace-nowrap"
-                      style={{
-                        color: !p.targets.override
-                          ? "var(--text-muted)"
-                          : p.targets.auto
-                            ? "var(--status-good)"
-                            : "var(--status-warning)",
-                      }}
-                    >
-                      {fmtSpeed(p.targets.speedTarget)}
-                      {p.targets.override
-                        ? p.targets.auto
-                          ? " · auto"
-                          : " · override"
-                        : ""}
-                    </div>
-                  </td>
-                  <td>
-                    <a
-                      href={p.statsGolemUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="ext-link text-xs"
-                      title="Provider on stats.golem.network"
-                    >
-                      stats ↗
-                    </a>
-                  </td>
-                </tr>
+                  ))}
+                </div>
               );
             })}
-          </tbody>
-        </table>
+          </div>
+        </div>
       </div>
-      {total > providers.length && (
-        <button
-          type="button"
-          onClick={() => setLimit((l) => l + 100)}
-          className="card mx-auto px-4 py-1.5 text-sm"
-        >
-          Show more ({providers.length} / {total})
-        </button>
-      )}
     </div>
   );
 }
