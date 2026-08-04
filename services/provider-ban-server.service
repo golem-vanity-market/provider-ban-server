@@ -1,0 +1,19 @@
+[Unit]
+Description=Common provider ban server for the vanity requestor fleet
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+
+ExecStart=/usr/local/bin/bun src/server/main.ts
+
+WorkingDirectory=/home/ubuntu/golem-vanity-market/provider-ban-server
+
+CPUQuota=50%
+
+Restart=always
+RestartSec=120
+
+[Install]
+WantedBy=multi-user.target

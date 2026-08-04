@@ -1,0 +1,21 @@
+# Service installed from https://raw.githubusercontent.com/golem-vanity-market/git-ploy
+
+[Unit]
+Description=Autoupdate service for provider-ban-server
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/golem-vanity-market/provider-ban-server
+ExecStart=/usr/bin/python3 -u gitploy.py
+Restart=on-failure
+RestartSec=120
+# Allow sudo to elevate, only use these settings in administrative scripts
+NoNewPrivileges=no
+ProtectSystem=off
+ProtectHome=off
+PrivateTmp=no
+
+[Install]
+WantedBy=multi-user.target
