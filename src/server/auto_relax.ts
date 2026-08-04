@@ -5,12 +5,14 @@ import type { Store } from "./db.ts";
  * Auto-relax: providers that recently proved themselves get more lenient
  * enforcement targets, automatically.
  *
- * Qualify (all of): work in the last 24 h >= autoRelaxMinWork24h, 24 h
- * efficiency >= autoRelaxEffFactor x the global efficiency target, and no
- * active ban. Qualifying providers get an auto override of
- * global / autoRelaxDivisor for both targets; the override is removed as
- * soon as they stop qualifying. Rows set manually (auto = 0) are never
- * created, updated, or removed here.
+ * Qualify (all of): work in the last 24 h >= autoRelaxMinWork24h and 24 h
+ * efficiency >= autoRelaxEffFactor x the global efficiency target. An active
+ * ban does NOT disqualify: a proven provider keeps its relaxed target
+ * through short escalating bans, so it isn't judged against the full target
+ * (and instantly re-banned) the moment it comes back. Qualifying providers
+ * get an auto override of global / autoRelaxDivisor for both targets; the
+ * override is removed as soon as they stop qualifying. Rows set manually
+ * (auto = 0) are never created, updated, or removed here.
  *
  * Returns the number of overrides added/updated + removed (0 = no change).
  */
@@ -50,10 +52,7 @@ export function applyAutoRelax(store: Store): number {
     const cost = agg.cost_1d ?? 0;
     const eff = cost > 0 ? work / cost / 1e12 : null;
     const qualifies =
-      work >= config.autoRelaxMinWork24h &&
-      eff !== null &&
-      eff >= minEff &&
-      agg.active_ban_id == null;
+      work >= config.autoRelaxMinWork24h && eff !== null && eff >= minEff;
 
     const existing = autoRows.get(id);
     autoRows.delete(id);
