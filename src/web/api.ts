@@ -4,6 +4,7 @@ import type {
   FleetSummary,
   ProviderDetail,
   ProviderSummary,
+  TargetsResponse,
 } from "../shared/types.ts";
 
 const API_BASE: string = import.meta.env.VITE_API_BASE || "";
@@ -12,6 +13,23 @@ async function getJson<T>(path: string): Promise<T> {
   const resp = await fetch(`${API_BASE}${path}`);
   if (!resp.ok) throw new Error(`API ${path} failed: ${resp.status}`);
   return (await resp.json()) as T;
+}
+
+async function sendJson<T>(
+  method: "POST" | "PUT" | "DELETE",
+  path: string,
+  body?: unknown,
+): Promise<T> {
+  const resp = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers: body !== undefined ? { "Content-Type": "application/json" } : {},
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  const data = (await resp.json().catch(() => ({}))) as T & { error?: string };
+  if (!resp.ok) {
+    throw new Error(data.error ?? `API ${path} failed: ${resp.status}`);
+  }
+  return data;
 }
 
 export const api = {
@@ -39,6 +57,26 @@ export const api = {
       `/api/v1/providers/${id}?limit=${limit}&offset=${offset}`,
     ),
   activeBans: () => getJson<ActiveBansResponse>("/api/v1/bans/active"),
+  targets: () => getJson<TargetsResponse>("/api/v1/targets"),
+  setTarget: (
+    id: string | "global",
+    body: {
+      efficiencyTarget: number | null;
+      speedTarget: number | null;
+      note?: string | null;
+    },
+  ) => sendJson<{ message: string }>("PUT", `/api/v1/targets/${id}`, body),
+  clearTarget: (id: string | "global") =>
+    sendJson<{ message: string }>("DELETE", `/api/v1/targets/${id}`),
+  banProvider: (providerId: string, reason: string, durationHours?: number) =>
+    sendJson<{ id?: number; message: string }>("POST", "/api/v1/bans", {
+      providerId,
+      reason,
+      source: "ui",
+      durationHours,
+    }),
+  revokeBan: (banId: number) =>
+    sendJson<{ message: string }>("DELETE", `/api/v1/bans/${banId}`),
   banHistory: (
     limit = 100,
     offset = 0,

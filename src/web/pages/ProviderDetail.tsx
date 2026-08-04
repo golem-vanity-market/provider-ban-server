@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api.ts";
 import type { ProviderDetail as Detail } from "../../shared/types.ts";
+import TargetsControl from "../components/TargetsControl.tsx";
 import CategoryBadge from "../components/CategoryBadge.tsx";
 import StatTile from "../components/StatTile.tsx";
 import WindowPicker from "../components/WindowPicker.tsx";
@@ -33,6 +34,7 @@ export default function ProviderDetail() {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [agrLimit, setAgrLimit] = useState(50);
+  const [refreshTick, setRefreshTick] = useState(0);
   const windowKey = useWindowKey();
 
   useEffect(() => {
@@ -50,7 +52,7 @@ export default function ProviderDetail() {
     return () => {
       stop = true;
     };
-  }, [id, agrLimit]);
+  }, [id, agrLimit, refreshTick]);
 
   if (error) {
     return (
@@ -125,6 +127,11 @@ export default function ProviderDetail() {
           )}
         </div>
       )}
+
+      <TargetsControl
+        detail={detail}
+        onChanged={() => setRefreshTick((t) => t + 1)}
+      />
 
       <WindowPicker />
 

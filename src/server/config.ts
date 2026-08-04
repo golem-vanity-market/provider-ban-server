@@ -37,6 +37,12 @@ export const config = {
     "/home/ubuntu/golem-vanity-market/vanity-nodes-gatherer/estimators.json",
   ),
 
+  // Fleet-wide enforcement targets served to the stones when no explicit
+  // global target is set in the UI. Keep in sync with the stones' .env
+  // (EFFICIENCY_LOWER_THRESHOLD / SPEED_LOWER_THRESHOLD).
+  defaultEfficiencyTarget: num("DEFAULT_EFFICIENCY_TARGET", 0.07), // TH/GLM
+  defaultSpeedTarget: num("DEFAULT_SPEED_TARGET", 500_000), // H/s
+
   // Scoring / categorization knobs.
   effTarget: num("EFF_TARGET", 0.15), // TH/GLM considered "full marks"
   volumeTargetHours: num("VOLUME_TARGET_HOURS", 200),

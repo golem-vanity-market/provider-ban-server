@@ -1,7 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.ts";
-import type { ProviderCategory, ProviderSummary } from "../../shared/types.ts";
+import type {
+  ProviderCategory,
+  ProviderSummary,
+  TargetsResponse,
+} from "../../shared/types.ts";
 import CategoryBadge from "../components/CategoryBadge.tsx";
 import ScoreMeter from "../components/ScoreMeter.tsx";
 import WindowPicker from "../components/WindowPicker.tsx";
@@ -10,6 +14,7 @@ import {
   fmtEff,
   fmtGlm,
   fmtHours,
+  fmtSpeed,
   fmtWork,
   shortId,
 } from "../format.ts";
@@ -46,6 +51,128 @@ const SORTS = [
   { key: "lastAgreement", label: "Last agreement", windowed: false },
 ];
 
+/** View + edit the fleet-wide enforcement target (stones terminate & ban
+ *  below it; per-provider overrides win over this). */
+function GlobalTargets({ onChanged }: { onChanged: () => void }) {
+  const [targets, setTargets] = useState<TargetsResponse | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [eff, setEff] = useState("");
+  const [speed, setSpeed] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const reload = useCallback(() => {
+    api.targets().then(setTargets).catch(() => {});
+  }, []);
+  useEffect(reload, [reload]);
+
+  if (!targets) return null;
+  const g = targets.global;
+
+  const save = async () => {
+    const effN = parseFloat(eff);
+    const speedN = parseFloat(speed);
+    if (!Number.isFinite(effN) || effN < 0 || !Number.isFinite(speedN) || speedN < 0) {
+      setError("Both targets must be non-negative numbers");
+      return;
+    }
+    try {
+      await api.setTarget("global", { efficiencyTarget: effN, speedTarget: speedN });
+      setEditing(false);
+      setError(null);
+      reload();
+      onChanged();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const reset = async () => {
+    try {
+      await api.clearTarget("global");
+      setEditing(false);
+      setError(null);
+      reload();
+      onChanged();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  return (
+    <div className="card flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
+      <span style={{ color: "var(--text-muted)" }}>
+        Global target (stop &amp; ban below):
+      </span>
+      {editing ? (
+        <>
+          <input
+            value={eff}
+            onChange={(e) => setEff(e.target.value)}
+            className="card w-24 px-2 py-1 text-sm tnum outline-none"
+            placeholder="TH/GLM"
+            aria-label="Global efficiency target (TH/GLM)"
+          />
+          <span style={{ color: "var(--text-muted)" }}>TH/GLM ·</span>
+          <input
+            value={speed}
+            onChange={(e) => setSpeed(e.target.value)}
+            className="card w-28 px-2 py-1 text-sm tnum outline-none"
+            placeholder="H/s"
+            aria-label="Global speed target (H/s)"
+          />
+          <span style={{ color: "var(--text-muted)" }}>H/s</span>
+          <button type="button" onClick={save} className="card px-3 py-1">
+            Save
+          </button>
+          {g.explicit && (
+            <button type="button" onClick={reset} className="card px-3 py-1">
+              Reset to defaults
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              setEditing(false);
+              setError(null);
+            }}
+            className="card px-3 py-1"
+          >
+            Cancel
+          </button>
+        </>
+      ) : (
+        <>
+          <span className="tnum font-medium">
+            {fmtEff(g.efficiencyTarget)} · {fmtSpeed(g.speedTarget)}
+          </span>
+          <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+            {g.explicit ? "set via UI" : "server default"}
+            {" · "}
+            {targets.overrides.length} provider override
+            {targets.overrides.length === 1 ? "" : "s"}
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setEff(String(g.efficiencyTarget));
+              setSpeed(String(g.speedTarget));
+              setEditing(true);
+            }}
+            className="card px-3 py-1"
+          >
+            Edit
+          </button>
+        </>
+      )}
+      {error && (
+        <span className="text-xs" style={{ color: "var(--status-critical)" }}>
+          {error}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export default function Providers() {
   const [providers, setProviders] = useState<ProviderSummary[]>([]);
   const [total, setTotal] = useState(0);
@@ -56,6 +183,7 @@ export default function Providers() {
   const [dir, setDir] = useState<"desc" | "asc">("desc");
   const [limit, setLimit] = useState(50);
   const [loading, setLoading] = useState(true);
+  const [refreshTick, setRefreshTick] = useState(0);
   const windowKey = useWindowKey();
 
   const query = useMemo(
@@ -90,7 +218,7 @@ export default function Providers() {
       stop = true;
       clearTimeout(t);
     };
-  }, [query]);
+  }, [query, refreshTick]);
 
   const clickSort = (key: string) => {
     if (sort === key) setDir((d) => (d === "desc" ? "asc" : "desc"));
@@ -104,6 +232,7 @@ export default function Providers() {
 
   return (
     <div className="flex flex-col gap-3">
+      <GlobalTargets onChanged={() => setRefreshTick((t) => t + 1)} />
       <div className="flex flex-wrap items-center gap-2">
         <WindowPicker />
         <input
@@ -161,6 +290,9 @@ export default function Providers() {
                   {sort === s.key ? (dir === "desc" ? " ↓" : " ↑") : ""}
                 </th>
               ))}
+              <th title="Enforcement target: stones stop work and ban below this">
+                Target
+              </th>
               <th>Links</th>
             </tr>
           </thead>
@@ -219,6 +351,20 @@ export default function Providers() {
                     ) : (
                       "—"
                     )}
+                  </td>
+                  <td className="tnum">
+                    {fmtEff(p.targets.efficiencyTarget)}
+                    <div
+                      className="text-xs whitespace-nowrap"
+                      style={{
+                        color: p.targets.override
+                          ? "var(--status-warning)"
+                          : "var(--text-muted)",
+                      }}
+                    >
+                      {fmtSpeed(p.targets.speedTarget)}
+                      {p.targets.override ? " · override" : ""}
+                    </div>
                   </td>
                   <td>
                     <a

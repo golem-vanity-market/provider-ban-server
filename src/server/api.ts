@@ -7,16 +7,18 @@ import { summarizeProvider } from "./scoring.ts";
 import type {
   ActiveBansResponse,
   BanRow,
+  EffectiveTargets,
   FleetSummary,
   ProviderCategory,
   ProviderDetail,
   ProviderSummary,
+  TargetsResponse,
 } from "../shared/types.ts";
 
 const JSON_HEADERS = {
   "Content-Type": "application/json",
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
   "Access-Control-Max-Age": "86400",
 };
@@ -84,6 +86,46 @@ function toAgreementRow(r: DbAgreementRow) {
   };
 }
 
+interface TargetsIndex {
+  global: TargetsResponse["global"];
+  overrides: TargetsResponse["overrides"];
+  effectiveFor: (providerId: string) => EffectiveTargets;
+}
+
+function targetsIndex(store: Store): TargetsIndex {
+  const rows = store.listTargets();
+  const globalRow = rows.find((r) => r.provider_id === "*");
+  const global = {
+    efficiencyTarget:
+      globalRow?.efficiency_target ?? config.defaultEfficiencyTarget,
+    speedTarget: globalRow?.speed_target ?? config.defaultSpeedTarget,
+    explicit: globalRow !== undefined,
+  };
+  const perProvider = rows.filter((r) => r.provider_id !== "*");
+  const map = new Map(perProvider.map((r) => [r.provider_id, r]));
+  return {
+    global,
+    overrides: perProvider.map((r) => ({
+      providerId: r.provider_id,
+      efficiencyTarget: r.efficiency_target,
+      speedTarget: r.speed_target,
+      note: r.note,
+      updatedAt: r.updated_at,
+    })),
+    effectiveFor: (providerId: string): EffectiveTargets => {
+      const o = map.get(providerId);
+      return {
+        efficiencyTarget: o?.efficiency_target ?? global.efficiencyTarget,
+        speedTarget: o?.speed_target ?? global.speedTarget,
+        override:
+          o !== undefined &&
+          (o.efficiency_target != null || o.speed_target != null),
+        note: o?.note ?? null,
+      };
+    },
+  };
+}
+
 // Provider summaries are recomputed at most every 15 seconds.
 let summariesCache: { at: number; list: ProviderSummary[] } | null = null;
 
@@ -91,7 +133,10 @@ function providerSummaries(store: Store): ProviderSummary[] {
   if (summariesCache && Date.now() - summariesCache.at < 15_000) {
     return summariesCache.list;
   }
-  const list = store.providerAggregates().map(summarizeProvider);
+  const targets = targetsIndex(store);
+  const list = store
+    .providerAggregates()
+    .map((row) => summarizeProvider(row, targets.effectiveFor(row.provider_id)));
   summariesCache = { at: Date.now(), list };
   return list;
 }
@@ -268,6 +313,65 @@ export function createHandler(store: Store, collector: Collector) {
         : sendJSON(404, { error: "Active ban not found" });
     }
 
+    if (req.method === "GET" && path === "/targets") {
+      const t = targetsIndex(store);
+      const resp: TargetsResponse = {
+        global: t.global,
+        overrides: t.overrides,
+        timestamp: new Date().toISOString(),
+      };
+      return sendJSON(200, resp);
+    }
+
+    const targetMatch = path.match(/^\/targets\/(global|0x[0-9a-fA-F]{40})$/);
+    if (targetMatch && (req.method === "PUT" || req.method === "POST")) {
+      let body: {
+        efficiencyTarget?: number | null;
+        speedTarget?: number | null;
+        note?: string | null;
+      };
+      try {
+        body = (await req.json()) as typeof body;
+      } catch {
+        return sendJSON(400, { error: "Invalid JSON" });
+      }
+      const check = (v: number | null | undefined, max: number): boolean =>
+        v == null || (typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= max);
+      if (!check(body.efficiencyTarget, 1000) || !check(body.speedTarget, 1e12)) {
+        return sendJSON(400, {
+          error:
+            "efficiencyTarget (TH/GLM) and speedTarget (H/s) must be non-negative numbers or null",
+        });
+      }
+      const isGlobal = targetMatch[1] === "global";
+      if (isGlobal && (body.efficiencyTarget == null || body.speedTarget == null)) {
+        return sendJSON(400, {
+          error: "The global target needs both efficiencyTarget and speedTarget",
+        });
+      }
+      store.setTarget({
+        providerId: isGlobal ? "*" : targetMatch[1].toLowerCase(),
+        efficiencyTarget: body.efficiencyTarget ?? null,
+        speedTarget: body.speedTarget ?? null,
+        note: body.note?.slice(0, 500) ?? null,
+      });
+      invalidateSummaries();
+      return sendJSON(200, { message: "Target set" });
+    }
+
+    if (targetMatch && req.method === "DELETE") {
+      if (targetMatch[1] === "global") {
+        store.deleteTarget("*"); // fall back to the server defaults
+        invalidateSummaries();
+        return sendJSON(200, { message: "Global target reset to defaults" });
+      }
+      const ok = store.deleteTarget(targetMatch[1].toLowerCase());
+      invalidateSummaries();
+      return ok
+        ? sendJSON(200, { message: "Override removed" })
+        : sendJSON(404, { error: "No override for this provider" });
+    }
+
     if (req.method === "GET" && path === "/providers") {
       let list = providerSummaries(store);
       // seen=1d|7d|30d|all - keep only providers seen within that period
@@ -345,7 +449,7 @@ export function createHandler(store: Store, collector: Collector) {
       const agg = store.providerAggregates(id);
       if (agg.length === 0)
         return sendJSON(404, { error: "Provider not found" });
-      const summary = summarizeProvider(agg[0]);
+      const summary = summarizeProvider(agg[0], targetsIndex(store).effectiveFor(id));
       const limit = Math.min(Number(q.get("limit") ?? 50), 500);
       const offset = Math.max(Number(q.get("offset") ?? 0), 0);
       const { rows, total } = store.agreementsForProvider(id, limit, offset);

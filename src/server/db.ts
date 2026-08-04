@@ -59,6 +59,14 @@ export interface ProviderAggRow {
   active_ban_expires_at: string | null;
 }
 
+export interface TargetRow {
+  provider_id: string;
+  efficiency_target: number | null;
+  speed_target: number | null;
+  note: string | null;
+  updated_at: string;
+}
+
 export function openDb(path = config.dbPath): Database {
   if (path !== ":memory:") {
     mkdirSync(dirname(path), { recursive: true });
@@ -106,6 +114,13 @@ export function openDb(path = config.dbPath): Database {
     CREATE TABLE IF NOT EXISTS meta (
       key TEXT PRIMARY KEY,
       value TEXT
+    );
+    CREATE TABLE IF NOT EXISTS targets (
+      provider_id TEXT PRIMARY KEY, -- '*' holds the global target
+      efficiency_target REAL,
+      speed_target REAL,
+      note TEXT,
+      updated_at TEXT NOT NULL
     );
   `);
   return db;
@@ -499,6 +514,47 @@ export class Store {
         c: number;
       }
     ).c;
+  }
+
+  listTargets(): TargetRow[] {
+    return this.db
+      .query(
+        `SELECT provider_id, efficiency_target, speed_target, note, updated_at
+         FROM targets ORDER BY provider_id`,
+      )
+      .all() as TargetRow[];
+  }
+
+  setTarget(params: {
+    providerId: string; // '*' for the global target
+    efficiencyTarget: number | null;
+    speedTarget: number | null;
+    note: string | null;
+  }): void {
+    this.db
+      .query(
+        `INSERT INTO targets (provider_id, efficiency_target, speed_target, note, updated_at)
+         VALUES ($id, $eff, $speed, $note, $now)
+         ON CONFLICT(provider_id) DO UPDATE SET
+           efficiency_target = excluded.efficiency_target,
+           speed_target = excluded.speed_target,
+           note = excluded.note,
+           updated_at = excluded.updated_at`,
+      )
+      .run({
+        $id: params.providerId,
+        $eff: params.efficiencyTarget,
+        $speed: params.speedTarget,
+        $note: params.note,
+        $now: new Date().toISOString(),
+      });
+  }
+
+  deleteTarget(providerId: string): boolean {
+    const res = this.db
+      .query(`DELETE FROM targets WHERE provider_id = $id`)
+      .run({ $id: providerId });
+    return res.changes > 0;
   }
 
   getMeta(key: string): string | null {

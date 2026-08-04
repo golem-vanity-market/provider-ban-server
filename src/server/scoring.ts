@@ -1,6 +1,7 @@
 import { config } from "./config.ts";
 import type { ProviderAggRow } from "./db.ts";
 import type {
+  EffectiveTargets,
   ProviderCategory,
   ProviderStats,
   ProviderSummary,
@@ -170,7 +171,10 @@ export function categorize(
   return "underperformer";
 }
 
-export function summarizeProvider(row: ProviderAggRow): ProviderSummary {
+export function summarizeProvider(
+  row: ProviderAggRow,
+  targets: EffectiveTargets,
+): ProviderSummary {
   const stats = statsFromAgg(row);
   const { score, breakdown } = computeScore(stats);
   const category = categorize(stats, score);
@@ -181,6 +185,7 @@ export function summarizeProvider(row: ProviderAggRow): ProviderSummary {
     scoreBreakdown: breakdown,
     category,
     stats,
+    targets,
     statsGolemUrl: `${config.statsGolemProviderUrl}${row.provider_id}`,
   };
 }

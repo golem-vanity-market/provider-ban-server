@@ -61,6 +61,30 @@ export interface ActiveBanInfo {
   expiresAt: string;
 }
 
+/** Enforcement targets: below these a stone terminates the agreement and
+ *  bans the provider. Effective value = per-provider override ?? global. */
+export interface EffectiveTargets {
+  efficiencyTarget: number; // TH/GLM
+  speedTarget: number; // H/s
+  override: boolean; // true when a per-provider override applies
+  note: string | null;
+}
+
+export interface TargetOverride {
+  providerId: string; // '*' for the global target
+  efficiencyTarget: number | null;
+  speedTarget: number | null;
+  note: string | null;
+  updatedAt: string;
+}
+
+export interface TargetsResponse {
+  // The resolved global target (explicit '*' row or the server defaults).
+  global: { efficiencyTarget: number; speedTarget: number; explicit: boolean };
+  overrides: TargetOverride[]; // per-provider rows (never contains '*')
+  timestamp: string;
+}
+
 export interface ProviderSummary {
   providerId: string;
   name: string | null;
@@ -68,6 +92,7 @@ export interface ProviderSummary {
   scoreBreakdown: ScoreBreakdown;
   category: ProviderCategory;
   stats: ProviderStats;
+  targets: EffectiveTargets;
   statsGolemUrl: string;
 }
 
