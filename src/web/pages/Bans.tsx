@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.ts";
 import type { BanRow } from "../../shared/types.ts";
+import WindowPicker from "../components/WindowPicker.tsx";
 import { fmtAgo, fmtDate, fmtIn, shortId } from "../format.ts";
+import { WINDOW_HOURS, WINDOW_SHORT, useWindowKey } from "../window.ts";
 
 function BanTable({ bans }: { bans: BanRow[] }) {
   return (
@@ -62,6 +64,7 @@ export default function Bans() {
   const [history, setHistory] = useState<BanRow[]>([]);
   const [historyTotal, setHistoryTotal] = useState(0);
   const [limit, setLimit] = useState(100);
+  const windowKey = useWindowKey();
 
   useEffect(() => {
     let stop = false;
@@ -71,7 +74,7 @@ export default function Bans() {
         .then((r) => !stop && setActive(r.bans))
         .catch(() => {});
       api
-        .banHistory(limit)
+        .banHistory(limit, 0, undefined, WINDOW_HOURS[windowKey])
         .then((r) => {
           if (!stop) {
             setHistory(r.bans);
@@ -86,11 +89,11 @@ export default function Bans() {
       stop = true;
       clearInterval(t);
     };
-  }, [limit]);
+  }, [limit, windowKey]);
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {(["active", "history"] as const).map((t) => (
           <button
             key={t}
@@ -107,9 +110,12 @@ export default function Bans() {
                 : { color: "var(--text-secondary)" }
             }
           >
-            {t === "active" ? `Active (${active.length})` : `History (${historyTotal})`}
+            {t === "active"
+              ? `Active (${active.length})`
+              : `History ${WINDOW_SHORT[windowKey]} (${historyTotal})`}
           </button>
         ))}
+        {tab === "history" && <WindowPicker />}
       </div>
       <div className="card p-4">
         {tab === "active" ? (

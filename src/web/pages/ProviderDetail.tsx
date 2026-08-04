@@ -4,6 +4,7 @@ import { api } from "../api.ts";
 import type { ProviderDetail as Detail } from "../../shared/types.ts";
 import CategoryBadge from "../components/CategoryBadge.tsx";
 import StatTile from "../components/StatTile.tsx";
+import WindowPicker from "../components/WindowPicker.tsx";
 import { ColumnChart, HBarList } from "../components/Charts.tsx";
 import {
   fmtAgo,
@@ -17,6 +18,7 @@ import {
   fmtWork,
   shortId,
 } from "../format.ts";
+import { WINDOW_SHORT, useWindowKey } from "../window.ts";
 
 const BREAKDOWN_LABELS: { key: keyof Detail["scoreBreakdown"]; label: string; weight: string }[] = [
   { key: "efficiency", label: "Efficiency vs target", weight: "35%" },
@@ -31,6 +33,7 @@ export default function ProviderDetail() {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [agrLimit, setAgrLimit] = useState(50);
+  const windowKey = useWindowKey();
 
   useEffect(() => {
     if (!id) return;
@@ -65,6 +68,9 @@ export default function ProviderDetail() {
   }
 
   const s = detail.stats;
+  const w = s.windows[windowKey];
+  const all = s.windows.all;
+  const suffix = WINDOW_SHORT[windowKey];
 
   return (
     <div className="flex flex-col gap-4">
@@ -120,20 +126,48 @@ export default function ProviderDetail() {
         </div>
       )}
 
+      <WindowPicker />
+
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <StatTile label="Agreements" value={fmtCompact(s.agreements)} sub={`${s.agreements24h} in 24h`} />
-        <StatTile label="Total work" value={fmtWork(s.totalWork)} sub={`${fmtWork(s.totalWork24h)} in 24h`} />
-        <StatTile label="Rented time" value={fmtHours(s.totalHours)} sub={`${fmtHours(s.totalHours24h)} in 24h`} />
-        <StatTile label="Total spend" value={fmtGlm(s.totalCost, 2)} sub={`${fmtGlm(s.totalCost24h, 2)} in 24h`} />
-        <StatTile label="Efficiency" value={fmtEff(s.efficiency)} sub={`avg speed ${fmtSpeed(s.avgSpeed)}`} />
         <StatTile
-          label="Bans"
+          label={`Agreements (${suffix})`}
+          value={fmtCompact(w.agreements)}
+          sub={`${fmtCompact(all.agreements)} all-time`}
+        />
+        <StatTile
+          label={`Work (${suffix})`}
+          value={fmtWork(w.work)}
+          sub={`${fmtWork(all.work)} all-time`}
+        />
+        <StatTile
+          label={`Rented time (${suffix})`}
+          value={fmtHours(w.hours)}
+          sub={`${fmtHours(all.hours)} all-time`}
+        />
+        <StatTile
+          label={`Spend (${suffix})`}
+          value={fmtGlm(w.cost, 2)}
+          sub={`${fmtGlm(all.cost, 2)} all-time`}
+        />
+        <StatTile
+          label={`Efficiency (${suffix})`}
+          value={fmtEff(w.efficiency)}
+          sub={`avg speed ${fmtSpeed(w.avgSpeed)}`}
+        />
+        <StatTile
+          label={`Bans (${suffix})`}
           value={
-            <span style={{ color: s.bansTotal > 0 ? "var(--status-critical)" : undefined }}>
-              {s.bansTotal}
+            <span
+              style={{ color: w.bans > 0 ? "var(--status-critical)" : undefined }}
+            >
+              {w.bans}
             </span>
           }
-          sub={s.lastBanAt ? `last ${fmtAgo(s.lastBanAt)}` : "never banned"}
+          sub={
+            s.lastBanAt
+              ? `${s.bansTotal} all-time · last ${fmtAgo(s.lastBanAt)}`
+              : "never banned"
+          }
         />
       </div>
 
@@ -159,7 +193,7 @@ export default function ProviderDetail() {
 
         <div className="card p-4">
           <ColumnChart
-            title="Work delivered per day (last 14 days)"
+            title="Work delivered per day (last 30 days)"
             data={detail.daily.map((d) => ({
               label: d.day,
               value: d.work,

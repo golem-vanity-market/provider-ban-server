@@ -24,17 +24,27 @@ export interface ProviderAggRow {
   name: string | null;
   first_seen: string | null;
   last_seen: string | null;
-  agreements: number;
-  agreements_24h: number;
-  total_work: number | null;
-  total_work_24h: number | null;
-  total_cost: number | null;
-  total_cost_24h: number | null;
-  total_hours: number | null;
-  total_hours_24h: number | null;
+  agr_1d: number;
+  agr_7d: number;
+  agr_30d: number;
+  agr_all: number;
+  work_1d: number | null;
+  work_7d: number | null;
+  work_30d: number | null;
+  work_all: number | null;
+  cost_1d: number | null;
+  cost_7d: number | null;
+  cost_30d: number | null;
+  cost_all: number | null;
+  hours_1d: number | null;
+  hours_7d: number | null;
+  hours_30d: number | null;
+  hours_all: number | null;
   successes: number | null;
-  bans_total: number;
+  bans_1d: number;
   bans_7d: number;
+  bans_30d: number;
+  bans_total: number;
   last_ban_at: string | null;
   active_ban_id: number | null;
   active_ban_source: string | null;
@@ -256,13 +266,21 @@ export class Store {
 
   banHistory(opts: {
     providerId?: string;
+    since?: string;
     limit: number;
     offset: number;
   }): { rows: unknown[]; total: number } {
-    const where = opts.providerId ? "WHERE b.provider_id = $id" : "";
-    const params: Record<string, string | number> = opts.providerId
-      ? { $id: opts.providerId }
-      : {};
+    const conds: string[] = [];
+    const params: Record<string, string | number> = {};
+    if (opts.providerId) {
+      conds.push("b.provider_id = $id");
+      params.$id = opts.providerId;
+    }
+    if (opts.since) {
+      conds.push("b.banned_at > $since");
+      params.$since = opts.since;
+    }
+    const where = conds.length > 0 ? `WHERE ${conds.join(" AND ")}` : "";
     const total = (
       this.db
         .query(`SELECT COUNT(*) AS c FROM bans b ${where}`)
@@ -284,11 +302,13 @@ export class Store {
   providerAggregates(providerId?: string): ProviderAggRow[] {
     const dayAgo = new Date(Date.now() - 24 * 3600_000).toISOString();
     const weekAgo = new Date(Date.now() - 7 * 24 * 3600_000).toISOString();
+    const monthAgo = new Date(Date.now() - 30 * 24 * 3600_000).toISOString();
     const now = new Date().toISOString();
     const where = providerId ? "WHERE p.provider_id = $pid" : "";
     const params: Record<string, string | number> = {
       $dayAgo: dayAgo,
       $weekAgo: weekAgo,
+      $monthAgo: monthAgo,
       $now: now,
     };
     if (providerId) params.$pid = providerId;
@@ -297,18 +317,30 @@ export class Store {
         `
       SELECT
         p.provider_id, p.name, p.first_seen, p.last_seen,
-        COUNT(a.agreement_id) AS agreements,
-        COUNT(a.agreement_id) FILTER (WHERE a.last_updated > $dayAgo) AS agreements_24h,
-        SUM(a.work) AS total_work,
-        SUM(a.work) FILTER (WHERE a.last_updated > $dayAgo) AS total_work_24h,
-        SUM(a.cost) AS total_cost,
-        SUM(a.cost) FILTER (WHERE a.last_updated > $dayAgo) AS total_cost_24h,
-        SUM(a.duration_hours) AS total_hours,
-        SUM(a.duration_hours) FILTER (WHERE a.last_updated > $dayAgo) AS total_hours_24h,
+        COUNT(a.agreement_id) FILTER (WHERE a.last_updated > $dayAgo) AS agr_1d,
+        COUNT(a.agreement_id) FILTER (WHERE a.last_updated > $weekAgo) AS agr_7d,
+        COUNT(a.agreement_id) FILTER (WHERE a.last_updated > $monthAgo) AS agr_30d,
+        COUNT(a.agreement_id) AS agr_all,
+        SUM(a.work) FILTER (WHERE a.last_updated > $dayAgo) AS work_1d,
+        SUM(a.work) FILTER (WHERE a.last_updated > $weekAgo) AS work_7d,
+        SUM(a.work) FILTER (WHERE a.last_updated > $monthAgo) AS work_30d,
+        SUM(a.work) AS work_all,
+        SUM(a.cost) FILTER (WHERE a.last_updated > $dayAgo) AS cost_1d,
+        SUM(a.cost) FILTER (WHERE a.last_updated > $weekAgo) AS cost_7d,
+        SUM(a.cost) FILTER (WHERE a.last_updated > $monthAgo) AS cost_30d,
+        SUM(a.cost) AS cost_all,
+        SUM(a.duration_hours) FILTER (WHERE a.last_updated > $dayAgo) AS hours_1d,
+        SUM(a.duration_hours) FILTER (WHERE a.last_updated > $weekAgo) AS hours_7d,
+        SUM(a.duration_hours) FILTER (WHERE a.last_updated > $monthAgo) AS hours_30d,
+        SUM(a.duration_hours) AS hours_all,
         SUM(a.successes) AS successes,
-        (SELECT COUNT(*) FROM bans b WHERE b.provider_id = p.provider_id) AS bans_total,
+        (SELECT COUNT(*) FROM bans b WHERE b.provider_id = p.provider_id
+           AND b.banned_at > $dayAgo) AS bans_1d,
         (SELECT COUNT(*) FROM bans b WHERE b.provider_id = p.provider_id
            AND b.banned_at > $weekAgo) AS bans_7d,
+        (SELECT COUNT(*) FROM bans b WHERE b.provider_id = p.provider_id
+           AND b.banned_at > $monthAgo) AS bans_30d,
+        (SELECT COUNT(*) FROM bans b WHERE b.provider_id = p.provider_id) AS bans_total,
         (SELECT MAX(b.banned_at) FROM bans b WHERE b.provider_id = p.provider_id) AS last_ban_at,
         ab.id AS active_ban_id,
         ab.source AS active_ban_source,
@@ -375,55 +407,69 @@ export class Store {
 
   fleetCounts(): {
     providersTotal: number;
-    providersActive24h: number;
     activeBans: number;
-    bans24h: number;
-    agreementsTotal: number;
-    agreements24h: number;
-    work24h: number;
-    cost24h: number;
-    hours24h: number;
+    windows: Record<
+      "d1" | "d7" | "d30" | "all",
+      {
+        agreements: number;
+        work: number;
+        cost: number;
+        hours: number;
+        bans: number;
+        providersActive: number;
+      }
+    >;
   } {
-    const dayAgo = new Date(Date.now() - 24 * 3600_000).toISOString();
     const now = new Date().toISOString();
     const one = <T>(
       sql: string,
       params: Record<string, string | number> = {},
     ): T => this.db.query(sql).get(params) as T;
     const prov = one<{ c: number }>(`SELECT COUNT(*) AS c FROM providers`);
-    const provAct = one<{ c: number }>(
-      `SELECT COUNT(*) AS c FROM providers WHERE last_seen > $dayAgo`,
-      { $dayAgo: dayAgo },
-    );
     const activeBans = one<{ c: number }>(
       `SELECT COUNT(*) AS c FROM bans WHERE revoked_at IS NULL AND expires_at > $now`,
       { $now: now },
     );
-    const bans24h = one<{ c: number }>(
-      `SELECT COUNT(*) AS c FROM bans WHERE banned_at > $dayAgo`,
-      { $dayAgo: dayAgo },
-    );
-    const agr = one<{ c: number }>(`SELECT COUNT(*) AS c FROM agreements`);
-    const agr24 = one<{
-      c: number;
-      w: number | null;
-      co: number | null;
-      h: number | null;
-    }>(
-      `SELECT COUNT(*) AS c, SUM(work) AS w, SUM(cost) AS co, SUM(duration_hours) AS h
-       FROM agreements WHERE last_updated > $dayAgo`,
-      { $dayAgo: dayAgo },
-    );
+    const windowFor = (days: number | null) => {
+      const cutoff = days
+        ? new Date(Date.now() - days * 24 * 3600_000).toISOString()
+        : "0000";
+      const agr = one<{
+        c: number;
+        w: number | null;
+        co: number | null;
+        h: number | null;
+      }>(
+        `SELECT COUNT(*) AS c, SUM(work) AS w, SUM(cost) AS co, SUM(duration_hours) AS h
+         FROM agreements WHERE last_updated > $cutoff`,
+        { $cutoff: cutoff },
+      );
+      const bans = one<{ c: number }>(
+        `SELECT COUNT(*) AS c FROM bans WHERE banned_at > $cutoff`,
+        { $cutoff: cutoff },
+      );
+      const provAct = one<{ c: number }>(
+        `SELECT COUNT(*) AS c FROM providers WHERE last_seen > $cutoff`,
+        { $cutoff: cutoff },
+      );
+      return {
+        agreements: agr.c,
+        work: agr.w ?? 0,
+        cost: agr.co ?? 0,
+        hours: agr.h ?? 0,
+        bans: bans.c,
+        providersActive: provAct.c,
+      };
+    };
     return {
       providersTotal: prov.c,
-      providersActive24h: provAct.c,
       activeBans: activeBans.c,
-      bans24h: bans24h.c,
-      agreementsTotal: agr.c,
-      agreements24h: agr24.c,
-      work24h: agr24.w ?? 0,
-      cost24h: agr24.co ?? 0,
-      hours24h: agr24.h ?? 0,
+      windows: {
+        d1: windowFor(1),
+        d7: windowFor(7),
+        d30: windowFor(30),
+        all: windowFor(null),
+      },
     };
   }
 

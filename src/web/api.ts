@@ -21,6 +21,7 @@ export const api = {
     dir?: string;
     category?: string;
     search?: string;
+    window?: string;
     limit?: number;
     offset?: number;
   }) => {
@@ -37,12 +38,18 @@ export const api = {
       `/api/v1/providers/${id}?limit=${limit}&offset=${offset}`,
     ),
   activeBans: () => getJson<ActiveBansResponse>("/api/v1/bans/active"),
-  banHistory: (limit = 100, offset = 0, providerId?: string) => {
+  banHistory: (
+    limit = 100,
+    offset = 0,
+    providerId?: string,
+    sinceHours?: number,
+  ) => {
     const q = new URLSearchParams({
       limit: String(limit),
       offset: String(offset),
     });
     if (providerId) q.set("providerId", providerId);
+    if (sinceHours !== undefined) q.set("sinceHours", String(sinceHours));
     return getJson<{ bans: BanRow[]; total: number }>(
       `/api/v1/bans?${q.toString()}`,
     );

@@ -165,7 +165,9 @@ export function createHandler(store: Store, collector: Collector) {
       };
       for (const p of providerSummaries(store)) categories[p.category]++;
       const summary: FleetSummary = {
-        ...counts,
+        providersTotal: counts.providersTotal,
+        activeBans: counts.activeBans,
+        windows: counts.windows,
         categories,
         nodes: [...collector.nodeStatus.values()].sort((a, b) =>
           a.node.localeCompare(b.node, undefined, { numeric: true }),
@@ -191,7 +193,17 @@ export function createHandler(store: Store, collector: Collector) {
       const limit = Math.min(Number(q.get("limit") ?? 100), 1000);
       const offset = Math.max(Number(q.get("offset") ?? 0), 0);
       const providerId = q.get("providerId")?.toLowerCase() ?? undefined;
-      const { rows, total } = store.banHistory({ providerId, limit, offset });
+      const sinceHoursRaw = Number(q.get("sinceHours"));
+      const since =
+        Number.isFinite(sinceHoursRaw) && sinceHoursRaw > 0
+          ? new Date(Date.now() - sinceHoursRaw * 3600_000).toISOString()
+          : undefined;
+      const { rows, total } = store.banHistory({
+        providerId,
+        since,
+        limit,
+        offset,
+      });
       return sendJSON(200, {
         bans: (rows as DbBanRow[]).map(toBanRow),
         total,
@@ -270,24 +282,27 @@ export function createHandler(store: Store, collector: Collector) {
       if (category) list = list.filter((p) => p.category === category);
       const sort = q.get("sort") ?? "score";
       const dir = q.get("dir") === "asc" ? 1 : -1;
+      const windowParam = q.get("window") ?? "1d";
+      const windowKey = (
+        { "1d": "d1", "7d": "d7", "30d": "d30", all: "all" } as const
+      )[windowParam] ?? "d1";
       const key = (p: ProviderSummary): number | string => {
+        const w = p.stats.windows[windowKey];
         switch (sort) {
           case "name":
             return p.name ?? "";
           case "efficiency":
-            return p.stats.efficiency ?? -1;
-          case "work24h":
-            return p.stats.totalWork24h;
+            return w.efficiency ?? -1;
           case "work":
-            return p.stats.totalWork;
+            return w.work;
           case "cost":
-            return p.stats.totalCost;
+            return w.cost;
           case "hours":
-            return p.stats.totalHours;
+            return w.hours;
           case "agreements":
-            return p.stats.agreements;
+            return w.agreements;
           case "bans":
-            return p.stats.bansTotal;
+            return w.bans;
           case "lastSeen":
             return p.stats.lastSeen ?? "";
           default:
@@ -329,7 +344,7 @@ export function createHandler(store: Store, collector: Collector) {
         agreements: (rows as DbAgreementRow[]).map(toAgreementRow),
         agreementsTotal: total,
         bans: (bans.rows as DbBanRow[]).map(toBanRow),
-        daily: store.dailyStats(id, 14) as ProviderDetail["daily"],
+        daily: store.dailyStats(id, 30) as ProviderDetail["daily"],
       };
       return sendJSON(200, detail);
     }

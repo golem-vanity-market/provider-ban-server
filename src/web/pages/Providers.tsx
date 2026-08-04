@@ -4,6 +4,7 @@ import { api } from "../api.ts";
 import type { ProviderCategory, ProviderSummary } from "../../shared/types.ts";
 import CategoryBadge from "../components/CategoryBadge.tsx";
 import ScoreMeter from "../components/ScoreMeter.tsx";
+import WindowPicker from "../components/WindowPicker.tsx";
 import {
   fmtAgo,
   fmtEff,
@@ -12,6 +13,7 @@ import {
   fmtWork,
   shortId,
 } from "../format.ts";
+import { WINDOW_PARAM, WINDOW_SHORT, useWindowKey } from "../window.ts";
 
 const CATEGORIES: (ProviderCategory | "")[] = [
   "",
@@ -24,16 +26,16 @@ const CATEGORIES: (ProviderCategory | "")[] = [
   "banned",
 ];
 
+// score, name and lastSeen are window-independent; the rest follow the window
 const SORTS = [
-  { key: "score", label: "Score" },
-  { key: "efficiency", label: "Efficiency" },
-  { key: "work", label: "Work" },
-  { key: "work24h", label: "Work 24h" },
-  { key: "hours", label: "Hours" },
-  { key: "cost", label: "Spend" },
-  { key: "agreements", label: "Agreements" },
-  { key: "bans", label: "Bans" },
-  { key: "lastSeen", label: "Last seen" },
+  { key: "score", label: "Score", windowed: false },
+  { key: "efficiency", label: "Efficiency", windowed: true },
+  { key: "work", label: "Work", windowed: true },
+  { key: "hours", label: "Hours", windowed: true },
+  { key: "cost", label: "Spend", windowed: true },
+  { key: "agreements", label: "Agreements", windowed: true },
+  { key: "bans", label: "Bans", windowed: true },
+  { key: "lastSeen", label: "Last seen", windowed: false },
 ];
 
 export default function Providers() {
@@ -45,10 +47,18 @@ export default function Providers() {
   const [dir, setDir] = useState<"desc" | "asc">("desc");
   const [limit, setLimit] = useState(50);
   const [loading, setLoading] = useState(true);
+  const windowKey = useWindowKey();
 
   const query = useMemo(
-    () => ({ search, category, sort, dir, limit }),
-    [search, category, sort, dir, limit],
+    () => ({
+      search,
+      category,
+      sort,
+      dir,
+      limit,
+      window: WINDOW_PARAM[windowKey],
+    }),
+    [search, category, sort, dir, limit, windowKey],
   );
 
   useEffect(() => {
@@ -80,9 +90,12 @@ export default function Providers() {
     }
   };
 
+  const suffix = ` (${WINDOW_SHORT[windowKey]})`;
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
+        <WindowPicker />
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -105,7 +118,10 @@ export default function Providers() {
         </span>
       </div>
 
-      <div className="card overflow-x-auto" style={{ opacity: loading ? 0.6 : 1 }}>
+      <div
+        className="card overflow-x-auto"
+        style={{ opacity: loading ? 0.6 : 1 }}
+      >
         <table className="data w-full">
           <thead>
             <tr>
@@ -119,6 +135,7 @@ export default function Providers() {
                   title={`Sort by ${s.label}`}
                 >
                   {s.label}
+                  {s.windowed ? suffix : ""}
                   {sort === s.key ? (dir === "desc" ? " ↓" : " ↑") : ""}
                 </th>
               ))}
@@ -126,53 +143,58 @@ export default function Providers() {
             </tr>
           </thead>
           <tbody>
-            {providers.map((p) => (
-              <tr key={p.providerId}>
-                <td>
-                  <Link to={`/providers/${p.providerId}`} className="ext-link">
-                    <span className="font-medium">
-                      {p.name ?? shortId(p.providerId)}
-                    </span>
-                  </Link>
-                  <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-                    {shortId(p.providerId)}
-                  </div>
-                </td>
-                <td>
-                  <CategoryBadge category={p.category} />
-                </td>
-                <td>
-                  <ScoreMeter score={p.score} />
-                </td>
-                <td className="tnum">{fmtEff(p.stats.efficiency)}</td>
-                <td className="tnum">{fmtWork(p.stats.totalWork)}</td>
-                <td className="tnum">{fmtWork(p.stats.totalWork24h)}</td>
-                <td className="tnum">{fmtHours(p.stats.totalHours)}</td>
-                <td className="tnum">{fmtGlm(p.stats.totalCost, 2)}</td>
-                <td className="tnum">{p.stats.agreements}</td>
-                <td className="tnum">
-                  {p.stats.bansTotal > 0 ? (
-                    <span style={{ color: "var(--status-critical)" }}>
-                      {p.stats.bansTotal}
-                    </span>
-                  ) : (
-                    0
-                  )}
-                </td>
-                <td>{fmtAgo(p.stats.lastSeen)}</td>
-                <td>
-                  <a
-                    href={p.statsGolemUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="ext-link text-xs"
-                    title="Provider on stats.golem.network"
-                  >
-                    stats ↗
-                  </a>
-                </td>
-              </tr>
-            ))}
+            {providers.map((p) => {
+              const w = p.stats.windows[windowKey];
+              return (
+                <tr key={p.providerId}>
+                  <td>
+                    <Link to={`/providers/${p.providerId}`} className="ext-link">
+                      <span className="font-medium">
+                        {p.name ?? shortId(p.providerId)}
+                      </span>
+                    </Link>
+                    <div
+                      className="text-xs"
+                      style={{ color: "var(--text-muted)" }}
+                    >
+                      {shortId(p.providerId)}
+                    </div>
+                  </td>
+                  <td>
+                    <CategoryBadge category={p.category} />
+                  </td>
+                  <td>
+                    <ScoreMeter score={p.score} />
+                  </td>
+                  <td className="tnum">{fmtEff(w.efficiency)}</td>
+                  <td className="tnum">{fmtWork(w.work)}</td>
+                  <td className="tnum">{fmtHours(w.hours)}</td>
+                  <td className="tnum">{fmtGlm(w.cost, 2)}</td>
+                  <td className="tnum">{w.agreements}</td>
+                  <td className="tnum">
+                    {w.bans > 0 ? (
+                      <span style={{ color: "var(--status-critical)" }}>
+                        {w.bans}
+                      </span>
+                    ) : (
+                      0
+                    )}
+                  </td>
+                  <td>{fmtAgo(p.stats.lastSeen)}</td>
+                  <td>
+                    <a
+                      href={p.statsGolemUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="ext-link text-xs"
+                      title="Provider on stats.golem.network"
+                    >
+                      stats ↗
+                    </a>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

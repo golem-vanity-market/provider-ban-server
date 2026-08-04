@@ -9,6 +9,8 @@ export type ProviderCategory =
   | "underperformer"
   | "new";
 
+export type WindowKey = "d1" | "d7" | "d30" | "all";
+
 export interface ScoreBreakdown {
   efficiency: number; // 0..1
   reliability: number; // 0..1
@@ -17,19 +19,21 @@ export interface ScoreBreakdown {
   freshness: number; // 0..1
 }
 
-export interface ProviderStats {
+/** Stats measured inside one history window (24h / 7d / 30d / all time). */
+export interface WindowStats {
   agreements: number;
-  agreements24h: number;
-  totalWork: number; // attempts (hashes)
-  totalWork24h: number;
-  totalCost: number; // GLM
-  totalCost24h: number;
-  totalHours: number; // rented hours
-  totalHours24h: number;
-  successes: number;
-  efficiency: number | null; // lifetime TH per GLM
+  work: number; // attempts (hashes)
+  cost: number; // GLM
+  hours: number; // rented hours
+  efficiency: number | null; // TH per GLM inside the window
   avgCostPerHour: number | null; // GLM/h
   avgSpeed: number | null; // H/s
+  bans: number; // bans issued inside the window
+}
+
+export interface ProviderStats {
+  windows: Record<WindowKey, WindowStats>;
+  successes: number;
   firstSeen: string | null;
   lastSeen: string | null;
   bansTotal: number;
@@ -49,7 +53,7 @@ export interface ActiveBanInfo {
 export interface ProviderSummary {
   providerId: string;
   name: string | null;
-  score: number; // 0..100
+  score: number; // 0..100 (always computed from full history)
   scoreBreakdown: ScoreBreakdown;
   category: ProviderCategory;
   stats: ProviderStats;
@@ -99,16 +103,20 @@ export interface ProviderDetail extends ProviderSummary {
   daily: DailyStat[];
 }
 
+/** Fleet-level totals inside one history window. */
+export interface FleetWindow {
+  agreements: number;
+  work: number;
+  cost: number;
+  hours: number;
+  bans: number;
+  providersActive: number;
+}
+
 export interface FleetSummary {
   providersTotal: number;
-  providersActive24h: number;
   activeBans: number;
-  bans24h: number;
-  agreementsTotal: number;
-  agreements24h: number;
-  work24h: number;
-  cost24h: number;
-  hours24h: number;
+  windows: Record<WindowKey, FleetWindow>;
   categories: Record<ProviderCategory, number>;
   nodes: NodeStatus[];
   banDurationHours: number;

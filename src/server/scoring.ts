@@ -1,33 +1,70 @@
 import { config } from "./config.ts";
-import type {
-  ProviderAggRow,
-} from "./db.ts";
+import type { ProviderAggRow } from "./db.ts";
 import type {
   ProviderCategory,
   ProviderStats,
   ProviderSummary,
   ScoreBreakdown,
+  WindowStats,
 } from "../shared/types.ts";
 
 const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
 
-export function statsFromAgg(row: ProviderAggRow): ProviderStats {
-  const work = row.total_work ?? 0;
-  const cost = row.total_cost ?? 0;
-  const hours = row.total_hours ?? 0;
+function windowStats(
+  agreements: number,
+  work: number | null,
+  cost: number | null,
+  hours: number | null,
+  bans: number,
+): WindowStats {
+  const w = work ?? 0;
+  const c = cost ?? 0;
+  const h = hours ?? 0;
   return {
-    agreements: row.agreements,
-    agreements24h: row.agreements_24h,
-    totalWork: work,
-    totalWork24h: row.total_work_24h ?? 0,
-    totalCost: cost,
-    totalCost24h: row.total_cost_24h ?? 0,
-    totalHours: hours,
-    totalHours24h: row.total_hours_24h ?? 0,
+    agreements,
+    work: w,
+    cost: c,
+    hours: h,
+    efficiency: c > 0 ? w / c / 1e12 : null, // TH per GLM
+    avgCostPerHour: h > 0 ? c / h : null,
+    avgSpeed: h > 0 ? w / (h * 3600) : null,
+    bans,
+  };
+}
+
+export function statsFromAgg(row: ProviderAggRow): ProviderStats {
+  return {
+    windows: {
+      d1: windowStats(
+        row.agr_1d,
+        row.work_1d,
+        row.cost_1d,
+        row.hours_1d,
+        row.bans_1d,
+      ),
+      d7: windowStats(
+        row.agr_7d,
+        row.work_7d,
+        row.cost_7d,
+        row.hours_7d,
+        row.bans_7d,
+      ),
+      d30: windowStats(
+        row.agr_30d,
+        row.work_30d,
+        row.cost_30d,
+        row.hours_30d,
+        row.bans_30d,
+      ),
+      all: windowStats(
+        row.agr_all,
+        row.work_all,
+        row.cost_all,
+        row.hours_all,
+        row.bans_total,
+      ),
+    },
     successes: row.successes ?? 0,
-    efficiency: cost > 0 ? work / cost / 1e12 : null, // TH per GLM
-    avgCostPerHour: hours > 0 ? cost / hours : null,
-    avgSpeed: hours > 0 ? work / (hours * 3600) : null,
     firstSeen: row.first_seen,
     lastSeen: row.last_seen,
     bansTotal: row.bans_total,
@@ -46,23 +83,27 @@ export function statsFromAgg(row: ProviderAggRow): ProviderStats {
   };
 }
 
+/** The score always looks at the full history (the reference windows are a
+ *  display concern) - recency is one weighted component, not a filter. */
 export function computeScore(stats: ProviderStats): {
   score: number;
   breakdown: ScoreBreakdown;
 } {
+  const all = stats.windows.all;
+
   // Efficiency: measured TH/GLM against the configured target.
   const efficiency =
-    stats.efficiency === null
+    all.efficiency === null
       ? 0.5 // no billing data yet: neutral
-      : clamp01(stats.efficiency / config.effTarget);
+      : clamp01(all.efficiency / config.effTarget);
 
   // Reliability: share of agreements that did not end in a ban.
-  const denom = stats.agreements + stats.bansTotal;
-  const reliability = denom === 0 ? 0.5 : clamp01(stats.agreements / denom);
+  const denom = all.agreements + stats.bansTotal;
+  const reliability = denom === 0 ? 0.5 : clamp01(all.agreements / denom);
 
   // Volume: log-scaled delivered rental hours.
   const volume = clamp01(
-    Math.log10(1 + stats.totalHours) / Math.log10(1 + config.volumeTargetHours),
+    Math.log10(1 + all.hours) / Math.log10(1 + config.volumeTargetHours),
   );
 
   // Ban recency: full marks after 7 clean days.
@@ -103,13 +144,13 @@ export function categorize(
   stats: ProviderStats,
   score: number,
 ): ProviderCategory {
+  const all = stats.windows.all;
   if (stats.activeBan) return "banned";
   if (stats.bans7d >= config.blacklistBans7d) return "blacklisted";
-  if (stats.agreements < config.newMaxAgreements && stats.totalHours < 1)
-    return "new";
+  if (all.agreements < config.newMaxAgreements && all.hours < 1) return "new";
   if (
     score >= config.trustedMinScore &&
-    stats.totalHours >= config.trustedMinHours &&
+    all.hours >= config.trustedMinHours &&
     stats.bans7d === 0
   )
     return "trusted";

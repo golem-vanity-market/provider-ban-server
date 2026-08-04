@@ -1,11 +1,24 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.ts";
-import type { BanRow, FleetSummary, ProviderCategory } from "../../shared/types.ts";
+import type {
+  BanRow,
+  FleetSummary,
+  ProviderCategory,
+} from "../../shared/types.ts";
 import StatTile from "../components/StatTile.tsx";
 import CategoryBadge from "../components/CategoryBadge.tsx";
+import WindowPicker from "../components/WindowPicker.tsx";
 import { HBarList } from "../components/Charts.tsx";
-import { fmtAgo, fmtCompact, fmtGlm, fmtIn, fmtWork, shortId } from "../format.ts";
+import {
+  fmtAgo,
+  fmtCompact,
+  fmtGlm,
+  fmtIn,
+  fmtWork,
+  shortId,
+} from "../format.ts";
+import { WINDOW_LABELS, useWindowKey } from "../window.ts";
 
 const CATEGORY_ORDER: ProviderCategory[] = [
   "trusted",
@@ -21,6 +34,7 @@ export default function Dashboard() {
   const [summary, setSummary] = useState<FleetSummary | null>(null);
   const [recentBans, setRecentBans] = useState<BanRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const windowKey = useWindowKey();
 
   useEffect(() => {
     let stop = false;
@@ -49,7 +63,10 @@ export default function Dashboard() {
 
   if (error && !summary) {
     return (
-      <div className="card p-4 text-sm" style={{ color: "var(--status-critical)" }}>
+      <div
+        className="card p-4 text-sm"
+        style={{ color: "var(--status-critical)" }}
+      >
         ⚠ Failed to load summary: {error}
       </div>
     );
@@ -62,37 +79,63 @@ export default function Dashboard() {
     );
   }
 
+  const w = summary.windows[windowKey];
+  const wLabel = WINDOW_LABELS[windowKey].toLowerCase();
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <StatTile
-          label="Providers known"
-          value={summary.providersTotal}
-          sub={`${summary.providersActive24h} active in 24h`}
-        />
+      <div className="flex items-center gap-3">
+        <WindowPicker />
+        <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+          stats below are scoped to the selected window
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <StatTile
           label="Active fleet-wide bans"
           value={
-            <span style={{ color: summary.activeBans > 0 ? "var(--status-critical)" : undefined }}>
+            <span
+              style={{
+                color:
+                  summary.activeBans > 0 ? "var(--status-critical)" : undefined,
+              }}
+            >
               {summary.activeBans}
             </span>
           }
-          sub={`${summary.banDurationHours}h ban window`}
+          sub={`live · ${summary.banDurationHours}h ban window`}
         />
         <StatTile
-          label="Agreements (24h)"
-          value={fmtCompact(summary.agreements24h)}
-          sub={`${fmtCompact(summary.agreementsTotal)} total on record`}
+          label={`Providers (${wLabel})`}
+          value={w.providersActive}
+          sub={`${summary.providersTotal} known all-time`}
         />
         <StatTile
-          label="Work delivered (24h)"
-          value={fmtWork(summary.work24h)}
-          sub={`${summary.hours24h.toFixed(0)} rented hours`}
+          label={`Agreements (${wLabel})`}
+          value={fmtCompact(w.agreements)}
+          sub={`${fmtCompact(summary.windows.all.agreements)} all-time`}
         />
         <StatTile
-          label="Spend (24h)"
-          value={fmtGlm(summary.cost24h, 2)}
-          sub="across the fleet"
+          label={`Work (${wLabel})`}
+          value={fmtWork(w.work)}
+          sub={`${w.hours.toFixed(0)} rented hours`}
+        />
+        <StatTile
+          label={`Spend (${wLabel})`}
+          value={fmtGlm(w.cost, 2)}
+          sub={`${fmtGlm(summary.windows.all.cost, 0)} all-time`}
+        />
+        <StatTile
+          label={`Bans issued (${wLabel})`}
+          value={
+            <span
+              style={{ color: w.bans > 0 ? "var(--status-critical)" : undefined }}
+            >
+              {w.bans}
+            </span>
+          }
+          sub={`${summary.windows.all.bans} all-time`}
         />
       </div>
 
@@ -109,7 +152,7 @@ export default function Dashboard() {
         </div>
 
         <div className="card p-4">
-          <h2 className="mb-3 text-sm font-semibold">Requestor nodes</h2>
+          <h2 className="mb-3 text-sm font-semibold">Requestor nodes (live)</h2>
           <table className="data w-full">
             <thead>
               <tr>
@@ -179,7 +222,13 @@ export default function Dashboard() {
                     {b.reason ?? "—"}
                   </td>
                   <td>{fmtAgo(b.bannedAt)}</td>
-                  <td>{b.active ? fmtIn(b.expiresAt) : b.revokedAt ? "revoked" : "expired"}</td>
+                  <td>
+                    {b.active
+                      ? fmtIn(b.expiresAt)
+                      : b.revokedAt
+                        ? "revoked"
+                        : "expired"}
+                  </td>
                 </tr>
               ))}
             </tbody>
