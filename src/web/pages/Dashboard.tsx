@@ -104,7 +104,7 @@ export default function Dashboard() {
               {summary.activeBans}
             </span>
           }
-          sub={`live · ${summary.banDurationHours}h ban window`}
+          sub={`live · escalating 1h+ bans (max ${summary.banMaxHours}h)`}
         />
         <StatTile
           label={`Providers (${wLabel})`}

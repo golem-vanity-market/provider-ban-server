@@ -172,7 +172,7 @@ export default function ProviderDetail() {
           }
           sub={
             s.lastBanAt
-              ? `${s.bansTotal} all-time · last ${fmtAgo(s.lastBanAt)}`
+              ? `${s.dailyBans} today · next ban ${s.nextBanHours}h · last ${fmtAgo(s.lastBanAt)}`
               : "never banned"
           }
         />

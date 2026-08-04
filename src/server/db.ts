@@ -51,6 +51,7 @@ export interface ProviderAggRow {
   bans_7d: number;
   bans_30d: number;
   bans_total: number;
+  daily_bans: number; // non-revoked, last 24h, after the escalation cutoff
   last_ban_at: string | null;
   active_ban_id: number | null;
   active_ban_source: string | null;
@@ -224,6 +225,27 @@ export class Store {
     return row !== null;
   }
 
+  /** Non-revoked bans of this provider within the last 24h (and after the
+   *  escalation cutoff set when the escalating-ban logic was introduced). */
+  dailyBans(providerId: string): number {
+    const dayAgo = new Date(Date.now() - 24 * 3600_000).toISOString();
+    const cutoff = this.getMeta("ban_count_cutoff") ?? "";
+    const since = cutoff > dayAgo ? cutoff : dayAgo;
+    return (
+      this.db
+        .query(
+          `SELECT COUNT(*) AS c FROM bans
+           WHERE provider_id = $id AND revoked_at IS NULL AND banned_at > $since`,
+        )
+        .get({ $id: providerId, $since: since }) as { c: number }
+    ).c;
+  }
+
+  /** Duration the next ban of this provider would get (escalation). */
+  nextBanHours(providerId: string): number {
+    return Math.min(this.dailyBans(providerId) + 1, config.banMaxHours);
+  }
+
   insertBan(params: {
     providerId: string;
     source: string;
@@ -232,7 +254,9 @@ export class Store {
     durationHours?: number;
   }): number {
     const now = new Date();
-    const hours = params.durationHours ?? config.banDurationHours;
+    // Escalation: 1st ban of the day = 1h, 2nd = 2h, ... unless the caller
+    // pinned an explicit duration.
+    const hours = params.durationHours ?? this.nextBanHours(params.providerId);
     const expires = new Date(now.getTime() + hours * 3600_000);
     this.upsertProvider(params.providerId, null, now.toISOString());
     const res = this.db
@@ -258,6 +282,19 @@ export class Store {
       )
       .run({ $now: new Date().toISOString(), $id: banId });
     return res.changes > 0;
+  }
+
+  /** Fleet-wide reset: revoke every active ban (used when switching ban
+   *  policies). Returns the number of bans revoked. */
+  revokeAllActiveBans(): number {
+    const now = new Date().toISOString();
+    const res = this.db
+      .query(
+        `UPDATE bans SET revoked_at = $now
+         WHERE revoked_at IS NULL AND expires_at > $now`,
+      )
+      .run({ $now: now });
+    return res.changes;
   }
 
   revokeActiveBansForProvider(providerId: string): number {
@@ -334,11 +371,13 @@ export class Store {
     const monthAgo = new Date(Date.now() - 30 * 24 * 3600_000).toISOString();
     const now = new Date().toISOString();
     const where = providerId ? "WHERE p.provider_id = $pid" : "";
+    const cutoff = this.getMeta("ban_count_cutoff") ?? "";
     const params: Record<string, string | number> = {
       $dayAgo: dayAgo,
       $weekAgo: weekAgo,
       $monthAgo: monthAgo,
       $now: now,
+      $sinceDaily: cutoff > dayAgo ? cutoff : dayAgo,
     };
     if (providerId) params.$pid = providerId;
     return this.db
@@ -376,6 +415,8 @@ export class Store {
         (SELECT COUNT(*) FROM bans b WHERE b.provider_id = p.provider_id
            AND b.banned_at > $monthAgo) AS bans_30d,
         (SELECT COUNT(*) FROM bans b WHERE b.provider_id = p.provider_id) AS bans_total,
+        (SELECT COUNT(*) FROM bans b WHERE b.provider_id = p.provider_id
+           AND b.revoked_at IS NULL AND b.banned_at > $sinceDaily) AS daily_bans,
         (SELECT MAX(b.banned_at) FROM bans b WHERE b.provider_id = p.provider_id) AS last_ban_at,
         ab.id AS active_ban_id,
         ab.source AS active_ban_source,

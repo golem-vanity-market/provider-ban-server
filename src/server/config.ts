@@ -15,9 +15,9 @@ export const config = {
   host: str("HOST", "127.0.0.1"),
   dbPath: str("DB_PATH", "data/banserver.sqlite"),
 
-  // OPERATIONS.md 6b: a failing provider waits 8 hours until its next chance
-  // anywhere in the fleet.
-  banDurationHours: num("BAN_DURATION_HOURS", 8),
+  // Escalating bans: the Nth ban of a provider's day lasts N hours (1h, 2h,
+  // 3h, ...), counted over the last 24h (non-revoked bans only), capped here.
+  banMaxHours: num("BAN_MAX_HOURS", 24),
 
   collectIntervalSecs: num("COLLECT_INTERVAL_SECS", 30),
   nodesFile: str(

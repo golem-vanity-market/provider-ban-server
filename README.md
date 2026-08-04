@@ -9,8 +9,9 @@ Previously each of the requestors (`vanity-stone-0..9`) kept its own in-memory
 ban list that lasted only one 8-hour cycle, so a failing provider got up to 10
 independent initial-trust windows per cycle (OPERATIONS.md §5a). This server
 makes a ban **fleet-wide**: a provider banned by any requestor is banned for
-all of them, for `BAN_DURATION_HOURS` (default **8 h**) — one unpaid window
-per provider, then an 8-hour wait anywhere in the fleet.
+all of them, with **escalating durations** — the Nth non-revoked ban within
+24 h lasts N hours (1 h, 2 h, 3 h, …, capped at `BAN_MAX_HOURS`, default
+**24 h**). One slip costs an hour; repeat offenders wait longer each time.
 
 ## What it does
 

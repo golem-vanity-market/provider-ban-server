@@ -219,7 +219,7 @@ export function createHandler(store: Store, collector: Collector) {
         nodes: [...collector.nodeStatus.values()].sort((a, b) =>
           a.node.localeCompare(b.node, undefined, { numeric: true }),
         ),
-        banDurationHours: config.banDurationHours,
+        banMaxHours: config.banMaxHours,
         collectedAt: collector.lastCollectedAt,
       };
       return sendJSON(200, summary);

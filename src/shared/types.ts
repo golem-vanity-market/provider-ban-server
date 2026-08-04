@@ -49,6 +49,8 @@ export interface ProviderStats {
   lastSeen: string | null;
   bansTotal: number;
   bans7d: number;
+  dailyBans: number; // non-revoked bans in the last 24h (escalation counter)
+  nextBanHours: number; // duration the provider's next ban would get
   lastBanAt: string | null;
   activeBan: ActiveBanInfo | null;
 }
@@ -157,7 +159,7 @@ export interface FleetSummary {
   windows: Record<WindowKey, FleetWindow>;
   categories: Record<ProviderCategory, number>;
   nodes: NodeStatus[];
-  banDurationHours: number;
+  banMaxHours: number; // escalating bans: 1h, 2h, ... capped here
   collectedAt: string | null;
 }
 
