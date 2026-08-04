@@ -54,6 +54,8 @@ export interface ProviderAggRow {
   bans_total: number;
   daily_bans: number; // non-revoked, last 24h, after the escalation cutoff
   last_ban_at: string | null;
+  last_ban_reason: string | null;
+  last_ban_source: string | null;
   active_ban_id: number | null;
   active_ban_source: string | null;
   active_ban_reason: string | null;
@@ -434,6 +436,10 @@ export class Store {
         (SELECT COUNT(*) FROM bans b WHERE b.provider_id = p.provider_id
            AND b.revoked_at IS NULL AND b.banned_at > $sinceDaily) AS daily_bans,
         (SELECT MAX(b.banned_at) FROM bans b WHERE b.provider_id = p.provider_id) AS last_ban_at,
+        (SELECT b.reason FROM bans b WHERE b.provider_id = p.provider_id
+           ORDER BY b.banned_at DESC LIMIT 1) AS last_ban_reason,
+        (SELECT b.source FROM bans b WHERE b.provider_id = p.provider_id
+           ORDER BY b.banned_at DESC LIMIT 1) AS last_ban_source,
         ab.id AS active_ban_id,
         ab.source AS active_ban_source,
         ab.reason AS active_ban_reason,

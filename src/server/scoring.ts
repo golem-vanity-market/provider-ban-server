@@ -85,6 +85,8 @@ export function statsFromAgg(row: ProviderAggRow): ProviderStats {
     dailyBans: row.daily_bans,
     nextBanHours: Math.min(row.daily_bans + 1, config.banMaxHours),
     lastBanAt: row.last_ban_at,
+    lastBanReason: row.last_ban_reason,
+    lastBanSource: row.last_ban_source,
     activeBan:
       row.active_ban_id != null
         ? {

@@ -52,6 +52,8 @@ export interface ProviderStats {
   dailyBans: number; // non-revoked bans in the last 24h (escalation counter)
   nextBanHours: number; // duration the provider's next ban would get
   lastBanAt: string | null;
+  lastBanReason: string | null; // reason of the most recent ban (any status)
+  lastBanSource: string | null;
   activeBan: ActiveBanInfo | null;
 }
 

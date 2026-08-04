@@ -502,6 +502,33 @@ export default function Providers() {
         },
       },
       {
+        id: "lastBan",
+        header: "Last ban",
+        size: 200,
+        cell: ({ row }) => {
+          const s = row.original.stats;
+          if (!s.lastBanAt)
+            return <span style={{ color: "var(--text-muted)" }}>never</span>;
+          return (
+            <div className="min-w-0" title={s.lastBanReason ?? undefined}>
+              <span className="tnum">{fmtAgo(s.lastBanAt)}</span>
+              {s.lastBanSource ? (
+                <span style={{ color: "var(--text-muted)" }}>
+                  {" "}
+                  by {s.lastBanSource}
+                </span>
+              ) : null}
+              <div
+                className="truncate text-xs"
+                style={{ color: "var(--text-muted)" }}
+              >
+                {s.lastBanReason ?? "—"}
+              </div>
+            </div>
+          );
+        },
+      },
+      {
         id: "lastSeen",
         header: "Last seen",
         size: 96,
