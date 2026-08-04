@@ -426,20 +426,25 @@ export class Store {
         la.work AS last_agr_work,
         la.successes AS last_agr_successes,
         la.duration_hours AS last_agr_duration_hours,
+        -- Revoked bans count nowhere: a revoke (manual forgiveness or a
+        -- fleet-wide reset) must not keep providers blacklisted or hurt
+        -- their score. Full history stays visible in the bans table.
         (SELECT COUNT(*) FROM bans b WHERE b.provider_id = p.provider_id
-           AND b.banned_at > $dayAgo) AS bans_1d,
+           AND b.revoked_at IS NULL AND b.banned_at > $dayAgo) AS bans_1d,
         (SELECT COUNT(*) FROM bans b WHERE b.provider_id = p.provider_id
-           AND b.banned_at > $weekAgo) AS bans_7d,
+           AND b.revoked_at IS NULL AND b.banned_at > $weekAgo) AS bans_7d,
         (SELECT COUNT(*) FROM bans b WHERE b.provider_id = p.provider_id
-           AND b.banned_at > $monthAgo) AS bans_30d,
-        (SELECT COUNT(*) FROM bans b WHERE b.provider_id = p.provider_id) AS bans_total,
+           AND b.revoked_at IS NULL AND b.banned_at > $monthAgo) AS bans_30d,
+        (SELECT COUNT(*) FROM bans b WHERE b.provider_id = p.provider_id
+           AND b.revoked_at IS NULL) AS bans_total,
         (SELECT COUNT(*) FROM bans b WHERE b.provider_id = p.provider_id
            AND b.revoked_at IS NULL AND b.banned_at > $sinceDaily) AS daily_bans,
-        (SELECT MAX(b.banned_at) FROM bans b WHERE b.provider_id = p.provider_id) AS last_ban_at,
+        (SELECT MAX(b.banned_at) FROM bans b WHERE b.provider_id = p.provider_id
+           AND b.revoked_at IS NULL) AS last_ban_at,
         (SELECT b.reason FROM bans b WHERE b.provider_id = p.provider_id
-           ORDER BY b.banned_at DESC LIMIT 1) AS last_ban_reason,
+           AND b.revoked_at IS NULL ORDER BY b.banned_at DESC LIMIT 1) AS last_ban_reason,
         (SELECT b.source FROM bans b WHERE b.provider_id = p.provider_id
-           ORDER BY b.banned_at DESC LIMIT 1) AS last_ban_source,
+           AND b.revoked_at IS NULL ORDER BY b.banned_at DESC LIMIT 1) AS last_ban_source,
         ab.id AS active_ban_id,
         ab.source AS active_ban_source,
         ab.reason AS active_ban_reason,
