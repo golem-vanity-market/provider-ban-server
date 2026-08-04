@@ -31,9 +31,20 @@ export interface WindowStats {
   bans: number; // bans issued inside the window
 }
 
+/** The provider's most recent agreement and what it delivered. */
+export interface LastAgreementInfo {
+  agreementId: string;
+  node: string | null;
+  lastUpdated: string | null;
+  work: number; // attempts (hashes)
+  successes: number; // PoWs delivered
+  durationHours: number;
+}
+
 export interface ProviderStats {
   windows: Record<WindowKey, WindowStats>;
   successes: number;
+  lastAgreement: LastAgreementInfo | null;
   firstSeen: string | null;
   lastSeen: string | null;
   bansTotal: number;

@@ -65,6 +65,17 @@ export function statsFromAgg(row: ProviderAggRow): ProviderStats {
       ),
     },
     successes: row.successes ?? 0,
+    lastAgreement:
+      row.last_agr_id != null
+        ? {
+            agreementId: row.last_agr_id,
+            node: row.last_agr_node,
+            lastUpdated: row.last_agr_last_updated,
+            work: row.last_agr_work ?? 0,
+            successes: row.last_agr_successes ?? 0,
+            durationHours: row.last_agr_duration_hours ?? 0,
+          }
+        : null,
     firstSeen: row.first_seen,
     lastSeen: row.last_seen,
     bansTotal: row.bans_total,

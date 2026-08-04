@@ -188,6 +188,16 @@ export default function ProviderDetail() {
           />
           <div className="mt-3 text-xs" style={{ color: "var(--text-muted)" }}>
             First seen {fmtAgo(s.firstSeen)} · last seen {fmtAgo(s.lastSeen)}
+            {s.lastAgreement && (
+              <>
+                <br />
+                Last agreement {fmtAgo(s.lastAgreement.lastUpdated)} on{" "}
+                {s.lastAgreement.node ?? "?"} — {s.lastAgreement.successes} PoW
+                {" · "}
+                {fmtWork(s.lastAgreement.work)} in{" "}
+                {fmtHours(s.lastAgreement.durationHours)}
+              </>
+            )}
           </div>
         </div>
 
@@ -255,6 +265,7 @@ export default function ProviderDetail() {
                 <th>Last active</th>
                 <th>Duration</th>
                 <th>Work</th>
+                <th>PoWs</th>
                 <th>Cost</th>
                 <th>Price (GLM/h)</th>
                 <th>Efficiency</th>
@@ -271,6 +282,7 @@ export default function ProviderDetail() {
                   <td>{fmtDate(a.lastUpdated)}</td>
                   <td className="tnum">{fmtHours(a.durationHours)}</td>
                   <td className="tnum">{fmtWork(a.work)}</td>
+                  <td className="tnum">{a.successes}</td>
                   <td className="tnum">{fmtGlm(a.cost)}</td>
                   <td className="tnum">
                     {a.costPerHour != null ? a.costPerHour.toFixed(3) : "—"}

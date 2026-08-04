@@ -41,6 +41,12 @@ export interface ProviderAggRow {
   hours_30d: number | null;
   hours_all: number | null;
   successes: number | null;
+  last_agr_id: string | null;
+  last_agr_node: string | null;
+  last_agr_last_updated: string | null;
+  last_agr_work: number | null;
+  last_agr_successes: number | null;
+  last_agr_duration_hours: number | null;
   bans_1d: number;
   bans_7d: number;
   bans_30d: number;
@@ -334,6 +340,12 @@ export class Store {
         SUM(a.duration_hours) FILTER (WHERE a.last_updated > $monthAgo) AS hours_30d,
         SUM(a.duration_hours) AS hours_all,
         SUM(a.successes) AS successes,
+        la.agreement_id AS last_agr_id,
+        la.node AS last_agr_node,
+        la.last_updated AS last_agr_last_updated,
+        la.work AS last_agr_work,
+        la.successes AS last_agr_successes,
+        la.duration_hours AS last_agr_duration_hours,
         (SELECT COUNT(*) FROM bans b WHERE b.provider_id = p.provider_id
            AND b.banned_at > $dayAgo) AS bans_1d,
         (SELECT COUNT(*) FROM bans b WHERE b.provider_id = p.provider_id
@@ -359,6 +371,14 @@ export class Store {
             ORDER BY b2.expires_at DESC LIMIT 1
           )
       ) ab ON ab.provider_id = p.provider_id
+      LEFT JOIN (
+        SELECT a1.* FROM agreements a1
+        WHERE a1.rowid = (
+          SELECT a2.rowid FROM agreements a2
+          WHERE a2.provider_id = a1.provider_id
+          ORDER BY a2.last_updated DESC LIMIT 1
+        )
+      ) la ON la.provider_id = p.provider_id
       ${where}
       GROUP BY p.provider_id
       `,

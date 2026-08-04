@@ -43,6 +43,7 @@ const SORTS = [
   { key: "agreements", label: "Agreements", windowed: true },
   { key: "bans", label: "Bans", windowed: true },
   { key: "lastSeen", label: "Last seen", windowed: false },
+  { key: "lastAgreement", label: "Last agreement", windowed: false },
 ];
 
 export default function Providers() {
@@ -202,6 +203,23 @@ export default function Providers() {
                     )}
                   </td>
                   <td>{fmtAgo(p.stats.lastSeen)}</td>
+                  <td>
+                    {p.stats.lastAgreement ? (
+                      <>
+                        {fmtAgo(p.stats.lastAgreement.lastUpdated)}
+                        <div
+                          className="text-xs tnum whitespace-nowrap"
+                          style={{ color: "var(--text-muted)" }}
+                        >
+                          {p.stats.lastAgreement.successes} PoW ·{" "}
+                          {fmtWork(p.stats.lastAgreement.work)} ·{" "}
+                          {fmtHours(p.stats.lastAgreement.durationHours)}
+                        </div>
+                      </>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                   <td>
                     <a
                       href={p.statsGolemUrl}

@@ -314,6 +314,8 @@ export function createHandler(store: Store, collector: Collector) {
             return w.bans;
           case "lastSeen":
             return p.stats.lastSeen ?? "";
+          case "lastAgreement":
+            return p.stats.lastAgreement?.lastUpdated ?? "";
           default:
             return p.score;
         }
