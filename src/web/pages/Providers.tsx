@@ -358,21 +358,44 @@ export default function Providers() {
       {
         id: "cpu",
         header: "CPU",
-        size: 110,
+        size: 150,
         cell: ({ row }) => {
           const hw = row.original.hw;
           if (!hw || (hw.cpuThreads == null && hw.cpuCores == null))
             return <span style={{ color: "var(--text-muted)" }}>—</span>;
           return (
-            <div title={hw.cpuBrand ?? undefined}>
+            <div title={hw.cpuBrand ?? undefined} className="min-w-0">
               <span className="tnum">
                 {hw.cpuThreads ?? hw.cpuCores} threads
+                {hw.cpuCores != null ? ` · ${hw.cpuCores} cores` : ""}
+              </span>
+              <div
+                className="truncate text-xs"
+                style={{ color: "var(--text-muted)" }}
+              >
+                {hw.cpuBrand ?? "—"}
+              </div>
+            </div>
+          );
+        },
+      },
+      {
+        id: "memDisk",
+        header: "Mem / disk",
+        size: 96,
+        cell: ({ row }) => {
+          const hw = row.original.hw;
+          if (!hw || (hw.memGib == null && hw.storageGib == null))
+            return <span style={{ color: "var(--text-muted)" }}>—</span>;
+          return (
+            <div>
+              <span className="tnum">
+                {hw.memGib != null ? `${Math.round(hw.memGib)} GiB` : "—"}
               </span>
               <div className="text-xs tnum" style={{ color: "var(--text-muted)" }}>
-                {hw.cpuCores != null ? `${hw.cpuCores} cores` : ""}
-                {hw.memGib != null
-                  ? `${hw.cpuCores != null ? " · " : ""}${Math.round(hw.memGib)} GiB`
-                  : ""}
+                {hw.storageGib != null
+                  ? `${Math.round(hw.storageGib)} GiB disk`
+                  : "—"}
               </div>
             </div>
           );
@@ -495,8 +518,7 @@ export default function Providers() {
             <div>
               {fmtAgo(la.lastUpdated)}
               <div className="text-xs tnum" style={{ color: "var(--text-muted)" }}>
-                {la.successes} PoW · {fmtWork(la.work)} ·{" "}
-                {fmtHours(la.durationHours)}
+                {fmtWork(la.work)}
               </div>
             </div>
           );
