@@ -89,6 +89,27 @@ table.data tbody tr:hover {
   background: color-mix(in oklab, var(--series-1) 6%, transparent);
 }
 
+/* Green pulsing dot: provider is computing right now. */
+.live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--status-good);
+  animation: live-pulse 2s ease-in-out infinite;
+  vertical-align: baseline;
+}
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
 /* Virtualized providers grid (TanStack table + virtual) — its own
    scrollbar, sticky header, hand-resizable columns. */
 .gt-scroll {

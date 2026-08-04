@@ -25,6 +25,7 @@ export interface ProviderAggRow {
   name: string | null;
   first_seen: string | null;
   last_seen: string | null;
+  agr_active: number;
   agr_1d: number;
   agr_7d: number;
   agr_30d: number;
@@ -390,7 +391,11 @@ export class Store {
     const now = new Date().toISOString();
     const where = providerId ? "WHERE p.provider_id = $pid" : "";
     const cutoff = this.getMeta("ban_count_cutoff") ?? "";
+    // "Computing right now": the stone's estimator updated within the last
+    // few collector cycles.
+    const activeCutoff = new Date(Date.now() - 150_000).toISOString();
     const params: Record<string, string | number> = {
+      $activeCutoff: activeCutoff,
       $dayAgo: dayAgo,
       $weekAgo: weekAgo,
       $monthAgo: monthAgo,
@@ -403,6 +408,7 @@ export class Store {
         `
       SELECT
         p.provider_id, p.name, p.first_seen, p.last_seen,
+        COUNT(a.agreement_id) FILTER (WHERE a.last_updated > $activeCutoff) AS agr_active,
         COUNT(a.agreement_id) FILTER (WHERE a.last_updated > $dayAgo) AS agr_1d,
         COUNT(a.agreement_id) FILTER (WHERE a.last_updated > $weekAgo) AS agr_7d,
         COUNT(a.agreement_id) FILTER (WHERE a.last_updated > $monthAgo) AS agr_30d,

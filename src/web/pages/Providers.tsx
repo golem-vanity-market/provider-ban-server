@@ -257,6 +257,12 @@ export default function Providers() {
         size: 190,
         cell: ({ row }) => (
           <div className="min-w-0">
+            {row.original.stats.activeNow > 0 && (
+              <span
+                className="live-dot"
+                title={`Computing right now — ${row.original.stats.activeNow} running agreement${row.original.stats.activeNow === 1 ? "" : "s"}`}
+              />
+            )}
             <Link
               to={`/providers/${row.original.providerId}`}
               className="ext-link"

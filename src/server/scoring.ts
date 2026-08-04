@@ -66,6 +66,7 @@ export function statsFromAgg(row: ProviderAggRow): ProviderStats {
         row.bans_total,
       ),
     },
+    activeNow: row.agr_active ?? 0,
     successes: row.successes ?? 0,
     lastAgreement:
       row.last_agr_id != null

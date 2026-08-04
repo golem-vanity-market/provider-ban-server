@@ -43,6 +43,7 @@ export interface LastAgreementInfo {
 
 export interface ProviderStats {
   windows: Record<WindowKey, WindowStats>;
+  activeNow: number; // agreements computing right now (estimator updated <2.5 min ago)
   successes: number;
   lastAgreement: LastAgreementInfo | null;
   firstSeen: string | null;
