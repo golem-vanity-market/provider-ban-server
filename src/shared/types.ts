@@ -89,6 +89,21 @@ export interface TargetsResponse {
   timestamp: string;
 }
 
+/** Hardware + offered price list, scraped from stats.golem.network. */
+export interface ProviderHw {
+  cpuBrand: string | null;
+  cpuCores: number | null;
+  cpuThreads: number | null;
+  memGib: number | null;
+  storageGib: number | null;
+  monthlyPriceGlm: number | null; // stats.golem.network's own monthly quote
+  priceEnvHour: number | null; // GLM/h for the environment (duration coeff)
+  priceCpuHour: number | null; // GLM/h per busy CPU thread (cpu_sec coeff)
+  priceStart: number | null; // fixed start fee in GLM
+  online: boolean | null;
+  fetchedAt: string;
+}
+
 export interface ProviderSummary {
   providerId: string;
   name: string | null;
@@ -97,6 +112,7 @@ export interface ProviderSummary {
   category: ProviderCategory;
   stats: ProviderStats;
   targets: EffectiveTargets;
+  hw: ProviderHw | null; // null until fetched from stats.golem.network
   statsGolemUrl: string;
 }
 

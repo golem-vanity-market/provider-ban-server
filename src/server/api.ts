@@ -136,9 +136,16 @@ function providerSummaries(store: Store): ProviderSummary[] {
     return summariesCache.list;
   }
   const targets = targetsIndex(store);
+  const hw = store.hwMap();
   const list = store
     .providerAggregates()
-    .map((row) => summarizeProvider(row, targets.effectiveFor(row.provider_id)));
+    .map((row) =>
+      summarizeProvider(
+        row,
+        targets.effectiveFor(row.provider_id),
+        hw.get(row.provider_id) ?? null,
+      ),
+    );
   summariesCache = { at: Date.now(), list };
   return list;
 }
@@ -451,7 +458,11 @@ export function createHandler(store: Store, collector: Collector) {
       const agg = store.providerAggregates(id);
       if (agg.length === 0)
         return sendJSON(404, { error: "Provider not found" });
-      const summary = summarizeProvider(agg[0], targetsIndex(store).effectiveFor(id));
+      const summary = summarizeProvider(
+        agg[0],
+        targetsIndex(store).effectiveFor(id),
+        store.hwMap().get(id) ?? null,
+      );
       const limit = Math.min(Number(q.get("limit") ?? 50), 500);
       const offset = Math.max(Number(q.get("offset") ?? 0), 0);
       const { rows, total } = store.agreementsForProvider(id, limit, offset);

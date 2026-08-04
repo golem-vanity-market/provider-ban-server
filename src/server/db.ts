@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { config } from "./config.ts";
+import type { ProviderHw } from "../shared/types.ts";
 
 export interface AgreementUpsert {
   agreementId: string;
@@ -124,6 +125,21 @@ export function openDb(path = config.dbPath): Database {
       note TEXT,
       auto INTEGER NOT NULL DEFAULT 0,
       updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS provider_hw (
+      provider_id TEXT PRIMARY KEY, -- scraped from stats.golem.network
+      cpu_brand TEXT,
+      cpu_cores REAL,
+      cpu_threads REAL,
+      mem_gib REAL,
+      storage_gib REAL,
+      monthly_price_glm REAL,
+      price_env_hour REAL,
+      price_cpu_hour REAL,
+      price_start REAL,
+      online INTEGER,
+      fetched_at TEXT NOT NULL,
+      error TEXT
     );
   `);
   const targetCols = db
@@ -624,4 +640,124 @@ export class Store {
       )
       .run({ $key: key, $value: value });
   }
+
+  upsertProviderHw(row: {
+    providerId: string;
+    cpuBrand: string | null;
+    cpuCores: number | null;
+    cpuThreads: number | null;
+    memGib: number | null;
+    storageGib: number | null;
+    monthlyPriceGlm: number | null;
+    priceEnvHour: number | null;
+    priceCpuHour: number | null;
+    priceStart: number | null;
+    online: boolean | null;
+    error: string | null;
+  }): void {
+    this.db
+      .query(
+        `INSERT INTO provider_hw (provider_id, cpu_brand, cpu_cores, cpu_threads,
+           mem_gib, storage_gib, monthly_price_glm, price_env_hour,
+           price_cpu_hour, price_start, online, fetched_at, error)
+         VALUES ($id, $brand, $cores, $threads, $mem, $storage, $monthly,
+           $envH, $cpuH, $start, $online, $now, $error)
+         ON CONFLICT(provider_id) DO UPDATE SET
+           cpu_brand = COALESCE(excluded.cpu_brand, provider_hw.cpu_brand),
+           cpu_cores = COALESCE(excluded.cpu_cores, provider_hw.cpu_cores),
+           cpu_threads = COALESCE(excluded.cpu_threads, provider_hw.cpu_threads),
+           mem_gib = COALESCE(excluded.mem_gib, provider_hw.mem_gib),
+           storage_gib = COALESCE(excluded.storage_gib, provider_hw.storage_gib),
+           monthly_price_glm = COALESCE(excluded.monthly_price_glm, provider_hw.monthly_price_glm),
+           price_env_hour = COALESCE(excluded.price_env_hour, provider_hw.price_env_hour),
+           price_cpu_hour = COALESCE(excluded.price_cpu_hour, provider_hw.price_cpu_hour),
+           price_start = COALESCE(excluded.price_start, provider_hw.price_start),
+           online = excluded.online,
+           fetched_at = excluded.fetched_at,
+           error = excluded.error`,
+      )
+      .run({
+        $id: row.providerId,
+        $brand: row.cpuBrand,
+        $cores: row.cpuCores,
+        $threads: row.cpuThreads,
+        $mem: row.memGib,
+        $storage: row.storageGib,
+        $monthly: row.monthlyPriceGlm,
+        $envH: row.priceEnvHour,
+        $cpuH: row.priceCpuHour,
+        $start: row.priceStart,
+        $online: row.online == null ? null : row.online ? 1 : 0,
+        $now: new Date().toISOString(),
+        $error: row.error,
+      });
+  }
+
+  hwMap(): Map<string, ProviderHw> {
+    const rows = this.db
+      .query(`SELECT * FROM provider_hw`)
+      .all() as ProviderHwRow[];
+    const map = new Map<string, ProviderHw>();
+    for (const r of rows) {
+      // Rows that never yielded any data (only errors) stay invisible.
+      if (
+        r.cpu_threads == null &&
+        r.cpu_cores == null &&
+        r.monthly_price_glm == null &&
+        r.price_env_hour == null
+      )
+        continue;
+      map.set(r.provider_id, {
+        cpuBrand: r.cpu_brand,
+        cpuCores: r.cpu_cores,
+        cpuThreads: r.cpu_threads,
+        memGib: r.mem_gib,
+        storageGib: r.storage_gib,
+        monthlyPriceGlm: r.monthly_price_glm,
+        priceEnvHour: r.price_env_hour,
+        priceCpuHour: r.price_cpu_hour,
+        priceStart: r.price_start,
+        online: r.online == null ? null : r.online === 1,
+        fetchedAt: r.fetched_at,
+      });
+    }
+    return map;
+  }
+
+  /** Providers worth (re)fetching from stats.golem.network: active in the
+   *  last 7 days and never fetched (first) or fetched longer than the TTL
+   *  ago. */
+  hwFetchCandidates(limit: number, ttlHours: number): string[] {
+    const cutoff = new Date(Date.now() - ttlHours * 3600_000).toISOString();
+    const weekAgo = new Date(Date.now() - 7 * 24 * 3600_000).toISOString();
+    const rows = this.db
+      .query(
+        `SELECT p.provider_id AS id FROM providers p
+         LEFT JOIN provider_hw h ON h.provider_id = p.provider_id
+         WHERE p.last_seen > $weekAgo
+           AND (h.provider_id IS NULL OR h.fetched_at < $cutoff)
+         ORDER BY h.fetched_at IS NOT NULL, h.fetched_at ASC
+         LIMIT $limit`,
+      )
+      .all({ $weekAgo: weekAgo, $cutoff: cutoff, $limit: limit }) as {
+      id: string;
+    }[];
+    return rows.map((r) => r.id);
+  }
+}
+
+interface ProviderHwRow {
+  provider_id: string;
+  cpu_brand: string | null;
+  cpu_cores: number | null;
+  cpu_threads: number | null;
+  mem_gib: number | null;
+  storage_gib: number | null;
+  monthly_price_glm: number | null;
+  price_env_hour: number | null;
+  price_cpu_hour: number | null;
+  price_start: number | null;
+  online: number | null;
+  fetched_at: string;
+  error: string | null;
 }

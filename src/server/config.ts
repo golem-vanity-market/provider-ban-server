@@ -62,6 +62,11 @@ export const config = {
   blacklistBans7d: num("BLACKLIST_BANS_7D", 5),
   newMaxAgreements: num("NEW_MAX_AGREEMENTS", 3),
 
+  // Hardware/price-list scraping from stats.golem.network provider pages.
+  statsHwEnabled: num("STATS_HW_ENABLED", 1) !== 0,
+  statsHwTtlHours: num("STATS_HW_TTL_HOURS", 12),
+  statsHwPerCycle: num("STATS_HW_PER_CYCLE", 8),
+
   statsGolemProviderUrl: str(
     "STATS_GOLEM_PROVIDER_URL",
     "https://stats.golem.network/network/provider/",

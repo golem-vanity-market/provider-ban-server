@@ -356,6 +356,64 @@ export default function Providers() {
         },
       },
       {
+        id: "cpu",
+        header: "CPU",
+        size: 110,
+        cell: ({ row }) => {
+          const hw = row.original.hw;
+          if (!hw || (hw.cpuThreads == null && hw.cpuCores == null))
+            return <span style={{ color: "var(--text-muted)" }}>—</span>;
+          return (
+            <div title={hw.cpuBrand ?? undefined}>
+              <span className="tnum">
+                {hw.cpuThreads ?? hw.cpuCores} threads
+              </span>
+              <div className="text-xs tnum" style={{ color: "var(--text-muted)" }}>
+                {hw.cpuCores != null ? `${hw.cpuCores} cores` : ""}
+                {hw.memGib != null
+                  ? `${hw.cpuCores != null ? " · " : ""}${Math.round(hw.memGib)} GiB`
+                  : ""}
+              </div>
+            </div>
+          );
+        },
+      },
+      {
+        id: "listPrice",
+        header: "List price",
+        size: 118,
+        cell: ({ row }) => {
+          const hw = row.original.hw;
+          if (!hw) return <span style={{ color: "var(--text-muted)" }}>—</span>;
+          const full =
+            hw.priceEnvHour != null &&
+            hw.priceCpuHour != null &&
+            hw.cpuThreads != null
+              ? hw.priceEnvHour + hw.priceCpuHour * hw.cpuThreads
+              : null;
+          if (full == null && hw.monthlyPriceGlm == null)
+            return <span style={{ color: "var(--text-muted)" }}>—</span>;
+          return (
+            <div
+              title={
+                hw.priceEnvHour != null
+                  ? `env ${hw.priceEnvHour.toFixed(4)} GLM/h + cpu ${hw.priceCpuHour?.toFixed(4) ?? "?"} GLM/thread-h + start ${hw.priceStart ?? 0} GLM`
+                  : undefined
+              }
+            >
+              <span className="tnum">
+                {full != null ? `${full.toFixed(3)} GLM/h` : "—"}
+              </span>
+              <div className="text-xs tnum" style={{ color: "var(--text-muted)" }}>
+                {hw.monthlyPriceGlm != null
+                  ? `${hw.monthlyPriceGlm.toFixed(0)} GLM/mo`
+                  : "at full load"}
+              </div>
+            </div>
+          );
+        },
+      },
+      {
         id: "agreements",
         header: `Agreements${suffix}`,
         size: 118,

@@ -87,6 +87,34 @@ export default function ProviderDetail() {
           <div className="mt-1 text-xs tnum" style={{ color: "var(--text-muted)" }}>
             {detail.providerId}
           </div>
+          {detail.hw && (
+            <div
+              className="mt-1 text-xs"
+              style={{ color: "var(--text-secondary)" }}
+            >
+              {detail.hw.cpuBrand ?? "unknown CPU"}
+              {detail.hw.cpuCores != null && ` · ${detail.hw.cpuCores} cores`}
+              {detail.hw.cpuThreads != null &&
+                ` / ${detail.hw.cpuThreads} threads offered`}
+              {detail.hw.memGib != null &&
+                ` · ${Math.round(detail.hw.memGib)} GiB RAM`}
+              {detail.hw.storageGib != null &&
+                ` · ${Math.round(detail.hw.storageGib)} GiB disk`}
+              {detail.hw.priceEnvHour != null && (
+                <>
+                  {" · list price "}
+                  {detail.hw.priceEnvHour.toFixed(4)} GLM/h env
+                  {detail.hw.priceCpuHour != null &&
+                    ` + ${detail.hw.priceCpuHour.toFixed(4)} GLM/thread-h`}
+                  {detail.hw.priceStart != null &&
+                    detail.hw.priceStart > 0 &&
+                    ` + ${detail.hw.priceStart} GLM start`}
+                </>
+              )}
+              {detail.hw.monthlyPriceGlm != null &&
+                ` (${detail.hw.monthlyPriceGlm.toFixed(0)} GLM/mo on stats)`}
+            </div>
+          )}
           <div className="mt-2 flex gap-3 text-xs">
             <a
               href={detail.statsGolemUrl}
