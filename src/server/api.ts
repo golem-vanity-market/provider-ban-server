@@ -270,6 +270,15 @@ export function createHandler(store: Store, collector: Collector) {
 
     if (req.method === "GET" && path === "/providers") {
       let list = providerSummaries(store);
+      // seen=1d|7d|30d|all - keep only providers seen within that period
+      const seenParam = q.get("seen") ?? "all";
+      const seenHours = { "1d": 24, "7d": 7 * 24, "30d": 30 * 24 }[seenParam];
+      if (seenHours !== undefined) {
+        const cutoff = Date.now() - seenHours * 3600_000;
+        list = list.filter(
+          (p) => p.stats.lastSeen && Date.parse(p.stats.lastSeen) > cutoff,
+        );
+      }
       const search = q.get("search")?.toLowerCase();
       if (search) {
         list = list.filter(

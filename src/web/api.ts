@@ -22,6 +22,7 @@ export const api = {
     category?: string;
     search?: string;
     window?: string;
+    seen?: string;
     limit?: number;
     offset?: number;
   }) => {

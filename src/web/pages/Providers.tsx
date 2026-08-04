@@ -27,6 +27,13 @@ const CATEGORIES: (ProviderCategory | "")[] = [
 ];
 
 // score, name and lastSeen are window-independent; the rest follow the window
+const SEEN_OPTIONS = [
+  { value: "1d", label: "Active in 24 hours" },
+  { value: "7d", label: "Active in 7 days" },
+  { value: "30d", label: "Active in 30 days" },
+  { value: "all", label: "All providers" },
+];
+
 const SORTS = [
   { key: "score", label: "Score", windowed: false },
   { key: "efficiency", label: "Efficiency", windowed: true },
@@ -43,6 +50,7 @@ export default function Providers() {
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
+  const [seen, setSeen] = useState("1d");
   const [sort, setSort] = useState("score");
   const [dir, setDir] = useState<"desc" | "asc">("desc");
   const [limit, setLimit] = useState(50);
@@ -53,12 +61,13 @@ export default function Providers() {
     () => ({
       search,
       category,
+      seen,
       sort,
       dir,
       limit,
       window: WINDOW_PARAM[windowKey],
     }),
-    [search, category, sort, dir, limit, windowKey],
+    [search, category, seen, sort, dir, limit, windowKey],
   );
 
   useEffect(() => {
@@ -102,6 +111,18 @@ export default function Providers() {
           placeholder="Search name or 0x id…"
           className="card w-64 px-3 py-1.5 text-sm outline-none"
         />
+        <select
+          value={seen}
+          onChange={(e) => setSeen(e.target.value)}
+          className="card px-2 py-1.5 text-sm"
+          aria-label="Filter by last activity"
+        >
+          {SEEN_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
         <select
           value={category}
           onChange={(e) => setCategory(e.target.value)}
