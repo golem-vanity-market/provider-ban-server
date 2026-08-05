@@ -40,7 +40,7 @@ export const config = {
   // Fleet-wide enforcement targets served to the stones when no explicit
   // global target is set in the UI. Keep in sync with the stones' .env
   // (EFFICIENCY_LOWER_THRESHOLD / SPEED_LOWER_THRESHOLD).
-  defaultEfficiencyTarget: num("DEFAULT_EFFICIENCY_TARGET", 0.07), // TH/GLM
+  defaultEfficiencyTarget: num("DEFAULT_EFFICIENCY_TARGET", 0.05), // TH/GLM
   defaultSpeedTarget: num("DEFAULT_SPEED_TARGET", 500_000), // H/s
 
   // Auto-relax: proven providers (enough recent work at well-above-baseline
