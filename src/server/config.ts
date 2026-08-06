@@ -19,6 +19,11 @@ export const config = {
   // 3h, ...), counted over the last 24h (non-revoked bans only), capped here.
   banMaxHours: num("BAN_MAX_HOURS", 24),
 
+  // Periodic fleet-wide ban reset: every N hours revoke all active bans and
+  // clear every stone's local list (which also zeroes the escalation clocks,
+  // since revoked bans count nowhere). 0 disables.
+  banResetIntervalHours: num("BAN_RESET_INTERVAL_HOURS", 4),
+
   collectIntervalSecs: num("COLLECT_INTERVAL_SECS", 30),
   nodesFile: str(
     "NODES_FILE",

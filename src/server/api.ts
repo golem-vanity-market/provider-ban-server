@@ -269,6 +269,11 @@ export function createHandler(store: Store, collector: Collector) {
       });
     }
 
+    if (req.method === "POST" && path === "/bans/reset") {
+      const result = await collector.resetFleetBans();
+      return sendJSON(200, { message: "Fleet-wide ban reset", ...result });
+    }
+
     if (req.method === "POST" && path === "/bans") {
       let body: {
         providerId?: string;

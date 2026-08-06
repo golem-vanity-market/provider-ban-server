@@ -209,10 +209,59 @@ export class Collector {
     }
   }
 
+  /** Fleet-wide unban: revoke every active server ban AND clear each stone's
+   *  local per-cycle list (otherwise the collector re-ingests the stone list
+   *  within 30 s as fresh "stone-local ban" rows). A second server-side pass
+   *  catches rows ingested mid-reset. Restarts the periodic reset clock. */
+  async resetFleetBans(): Promise<{ revoked: number; stonesReset: number }> {
+    await this.loadNodes();
+    this.store.setMeta("last_fleet_ban_reset", new Date().toISOString());
+    let revoked = this.store.revokeAllActiveBans();
+    let stonesReset = 0;
+    await Promise.all(
+      this.nodes.map(async (node) => {
+        for (const base of this.nodeUrls(node.nodeName)) {
+          try {
+            const resp = await fetch(`${base}/providers/banned/reset`, {
+              method: "POST",
+              signal: AbortSignal.timeout(15_000),
+            });
+            if (resp.ok) {
+              stonesReset++;
+              return;
+            }
+          } catch {
+            // try next url
+          }
+        }
+        console.error(`[collector] ban reset: ${node.nodeName} unreachable`);
+      }),
+    );
+    revoked += this.store.revokeAllActiveBans();
+    invalidateSummaries();
+    console.log(
+      `[collector] fleet ban reset: revoked ${revoked}, stones cleared ${stonesReset}/${this.nodes.length}`,
+    );
+    return { revoked, stonesReset };
+  }
+
+  private async maybePeriodicBanReset(): Promise<void> {
+    if (config.banResetIntervalHours <= 0) return;
+    const last = this.store.getMeta("last_fleet_ban_reset");
+    const lastMs = last ? Date.parse(last) : NaN;
+    if (
+      Number.isFinite(lastMs) &&
+      Date.now() - lastMs < config.banResetIntervalHours * 3600_000
+    )
+      return;
+    await this.resetFleetBans();
+  }
+
   async collectOnce(): Promise<void> {
     await this.loadNodes();
     await Promise.all(this.nodes.map((n) => this.collectNode(n)));
     this.lastCollectedAt = new Date().toISOString();
+    await this.maybePeriodicBanReset();
     let changed = applyAutoRelax(this.store) > 0;
     try {
       changed = (await refreshProviderHw(this.store)) > 0 || changed;
