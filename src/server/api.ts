@@ -9,6 +9,9 @@ import type {
   BanRow,
   EffectiveTargets,
   FleetSummary,
+  OperatorProviderReport,
+  OperatorReport,
+  OperatorsResponse,
   ProviderCategory,
   ProviderDetail,
   ProviderSummary,
@@ -379,6 +382,89 @@ export function createHandler(store: Store, collector: Collector) {
       return ok
         ? sendJSON(200, { message: "Override removed" })
         : sendJSON(404, { error: "No override for this provider" });
+    }
+
+    if (req.method === "GET" && path === "/operators") {
+      // Earnings report grouped by operator payout wallet. Wallet resolution:
+      // invoice payeeAddr (authoritative — where the money actually goes),
+      // falling back to the wallet scraped from stats.golem.network.
+      const windowParam = q.get("window") ?? "1d";
+      const hours = { "1d": 24, "7d": 7 * 24, "30d": 30 * 24 }[windowParam];
+      const since =
+        hours !== undefined
+          ? new Date(Date.now() - hours * 3600_000).toISOString()
+          : null;
+      const byWallet = new Map<string | null, OperatorProviderReport[]>();
+      for (const r of store.operatorProviderRows(since)) {
+        const work = r.work ?? 0;
+        const cost = r.cost ?? 0;
+        const invoiced = r.invoiced ?? 0;
+        // Skip providers with nothing at all inside the window.
+        if (r.agreements === 0 && r.invoice_count === 0) continue;
+        const wallet = r.invoice_wallet ?? r.hw_wallet;
+        const row: OperatorProviderReport = {
+          providerId: r.provider_id,
+          name: r.name,
+          lastSeen: r.last_seen,
+          agreements: r.agreements,
+          work,
+          cost,
+          hours: r.hours ?? 0,
+          efficiency: cost > 0 ? work / cost / 1e12 : null,
+          invoiceCount: r.invoice_count,
+          invoiced,
+          accepted: r.accepted ?? 0,
+          settled: r.settled ?? 0,
+          lastInvoiceAt: r.last_invoice_at,
+        };
+        const list = byWallet.get(wallet);
+        if (list) list.push(row);
+        else byWallet.set(wallet, [row]);
+      }
+      const paidByWallet = new Map(
+        store.paymentsByWallet(since).map((p) => [p.payee_addr, p.paid]),
+      );
+      const operators: OperatorReport[] = [...byWallet.entries()].map(
+        ([wallet, providers]) => {
+          const sum = (f: (p: OperatorProviderReport) => number): number =>
+            providers.reduce((acc, p) => acc + f(p), 0);
+          const work = sum((p) => p.work);
+          const cost = sum((p) => p.cost);
+          providers.sort((a, b) => b.cost - a.cost);
+          return {
+            wallet,
+            providers,
+            agreements: sum((p) => p.agreements),
+            work,
+            cost,
+            hours: sum((p) => p.hours),
+            efficiency: cost > 0 ? work / cost / 1e12 : null,
+            invoiceCount: sum((p) => p.invoiceCount),
+            invoiced: sum((p) => p.invoiced),
+            accepted: sum((p) => p.accepted),
+            settled: sum((p) => p.settled),
+            paid: (wallet !== null ? paidByWallet.get(wallet) : undefined) ?? 0,
+          };
+        },
+      );
+      operators.sort((a, b) => b.cost - a.cost);
+      const total = (f: (o: OperatorReport) => number): number =>
+        operators.reduce((acc, o) => acc + f(o), 0);
+      const resp: OperatorsResponse = {
+        operators,
+        totals: {
+          operators: operators.filter((o) => o.wallet !== null).length,
+          providers: total((o) => o.providers.length),
+          work: total((o) => o.work),
+          cost: total((o) => o.cost),
+          invoiced: total((o) => o.invoiced),
+          accepted: total((o) => o.accepted),
+          settled: total((o) => o.settled),
+          paid: total((o) => o.paid),
+        },
+        timestamp: new Date().toISOString(),
+      };
+      return sendJSON(200, resp);
     }
 
     if (req.method === "GET" && path === "/providers") {

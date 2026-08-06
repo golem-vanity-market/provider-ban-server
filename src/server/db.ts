@@ -129,6 +129,31 @@ export function openDb(path = config.dbPath): Database {
       auto INTEGER NOT NULL DEFAULT 0,
       updated_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS invoices (
+      invoice_id TEXT PRIMARY KEY, -- yagna invoice id
+      node TEXT,                   -- stone whose daemon reported it
+      provider_id TEXT NOT NULL,   -- issuerId
+      payee_addr TEXT,             -- the operator wallet the money goes to
+      agreement_id TEXT,
+      payment_platform TEXT,
+      amount REAL NOT NULL,
+      status TEXT NOT NULL,        -- RECEIVED/ACCEPTED/SETTLED/REJECTED/...
+      issued_at TEXT,
+      payment_due_at TEXT,
+      first_seen TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_invoices_provider
+      ON invoices(provider_id, issued_at);
+    CREATE INDEX IF NOT EXISTS idx_invoices_issued ON invoices(issued_at);
+    CREATE TABLE IF NOT EXISTS payments (
+      payment_id TEXT PRIMARY KEY, -- yagna payment (on-chain transfer batch)
+      node TEXT,
+      payee_addr TEXT,
+      amount REAL NOT NULL,
+      paid_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_payments_payee ON payments(payee_addr);
     CREATE TABLE IF NOT EXISTS provider_hw (
       provider_id TEXT PRIMARY KEY, -- scraped from stats.golem.network
       cpu_brand TEXT,
@@ -150,6 +175,12 @@ export function openDb(path = config.dbPath): Database {
     .all() as { name: string }[];
   if (!targetCols.some((c) => c.name === "auto")) {
     db.exec(`ALTER TABLE targets ADD COLUMN auto INTEGER NOT NULL DEFAULT 0;`);
+  }
+  const hwCols = db
+    .query(`PRAGMA table_info(provider_hw)`)
+    .all() as { name: string }[];
+  if (!hwCols.some((c) => c.name === "wallet")) {
+    db.exec(`ALTER TABLE provider_hw ADD COLUMN wallet TEXT;`);
   }
   return db;
 }
@@ -670,15 +701,16 @@ export class Store {
     priceCpuHour: number | null;
     priceStart: number | null;
     online: boolean | null;
+    wallet: string | null;
     error: string | null;
   }): void {
     this.db
       .query(
         `INSERT INTO provider_hw (provider_id, cpu_brand, cpu_cores, cpu_threads,
            mem_gib, storage_gib, monthly_price_glm, price_env_hour,
-           price_cpu_hour, price_start, online, fetched_at, error)
+           price_cpu_hour, price_start, online, wallet, fetched_at, error)
          VALUES ($id, $brand, $cores, $threads, $mem, $storage, $monthly,
-           $envH, $cpuH, $start, $online, $now, $error)
+           $envH, $cpuH, $start, $online, $wallet, $now, $error)
          ON CONFLICT(provider_id) DO UPDATE SET
            cpu_brand = COALESCE(excluded.cpu_brand, provider_hw.cpu_brand),
            cpu_cores = COALESCE(excluded.cpu_cores, provider_hw.cpu_cores),
@@ -690,6 +722,7 @@ export class Store {
            price_cpu_hour = COALESCE(excluded.price_cpu_hour, provider_hw.price_cpu_hour),
            price_start = COALESCE(excluded.price_start, provider_hw.price_start),
            online = excluded.online,
+           wallet = COALESCE(excluded.wallet, provider_hw.wallet),
            fetched_at = excluded.fetched_at,
            error = excluded.error`,
       )
@@ -705,6 +738,7 @@ export class Store {
         $cpuH: row.priceCpuHour,
         $start: row.priceStart,
         $online: row.online == null ? null : row.online ? 1 : 0,
+        $wallet: row.wallet,
         $now: new Date().toISOString(),
         $error: row.error,
       });
@@ -735,6 +769,7 @@ export class Store {
         priceCpuHour: r.price_cpu_hour,
         priceStart: r.price_start,
         online: r.online == null ? null : r.online === 1,
+        wallet: r.wallet,
         fetchedAt: r.fetched_at,
       });
     }
@@ -752,7 +787,10 @@ export class Store {
         `SELECT p.provider_id AS id FROM providers p
          LEFT JOIN provider_hw h ON h.provider_id = p.provider_id
          WHERE p.last_seen > $weekAgo
-           AND (h.provider_id IS NULL OR h.fetched_at < $cutoff)
+           AND (h.provider_id IS NULL OR h.fetched_at < $cutoff
+                -- one-time backfill: rows scraped before the wallet column
+                -- existed get re-fetched ahead of the TTL
+                OR (h.wallet IS NULL AND h.error IS NULL))
          ORDER BY h.fetched_at IS NOT NULL, h.fetched_at ASC
          LIMIT $limit`,
       )
@@ -761,6 +799,169 @@ export class Store {
     }[];
     return rows.map((r) => r.id);
   }
+
+  upsertInvoices(rows: InvoiceUpsert[]): void {
+    if (rows.length === 0) return;
+    const stmt = this.db.query(`
+      INSERT INTO invoices (invoice_id, node, provider_id, payee_addr,
+        agreement_id, payment_platform, amount, status, issued_at,
+        payment_due_at, first_seen, updated_at)
+      VALUES ($invoiceId, $node, $providerId, $payeeAddr, $agreementId,
+        $platform, $amount, $status, $issuedAt, $dueAt, $now, $now)
+      ON CONFLICT(invoice_id) DO UPDATE SET
+        status = excluded.status,
+        amount = excluded.amount,
+        payee_addr = COALESCE(excluded.payee_addr, invoices.payee_addr),
+        updated_at = CASE WHEN excluded.status != invoices.status
+          THEN excluded.updated_at ELSE invoices.updated_at END
+    `);
+    const now = new Date().toISOString();
+    const tx = this.db.transaction((batch: InvoiceUpsert[]) => {
+      for (const r of batch) {
+        stmt.run({
+          $invoiceId: r.invoiceId,
+          $node: r.node,
+          $providerId: r.providerId,
+          $payeeAddr: r.payeeAddr,
+          $agreementId: r.agreementId,
+          $platform: r.paymentPlatform,
+          $amount: r.amount,
+          $status: r.status,
+          $issuedAt: r.issuedAt,
+          $dueAt: r.paymentDueAt,
+          $now: now,
+        });
+      }
+    });
+    tx(rows);
+  }
+
+  upsertPayments(rows: PaymentUpsert[]): void {
+    if (rows.length === 0) return;
+    const stmt = this.db.query(`
+      INSERT INTO payments (payment_id, node, payee_addr, amount, paid_at)
+      VALUES ($paymentId, $node, $payeeAddr, $amount, $paidAt)
+      ON CONFLICT(payment_id) DO UPDATE SET amount = excluded.amount
+    `);
+    const tx = this.db.transaction((batch: PaymentUpsert[]) => {
+      for (const r of batch) {
+        stmt.run({
+          $paymentId: r.paymentId,
+          $node: r.node,
+          $payeeAddr: r.payeeAddr,
+          $amount: r.amount,
+          $paidAt: r.paidAt,
+        });
+      }
+    });
+    tx(rows);
+  }
+
+  /** Latest ingest cursor per stone daemon (meta-table backed). */
+  yagnaCursor(node: string): string | null {
+    return this.getMeta(`yagna_cursor_${node}`);
+  }
+
+  setYagnaCursor(node: string, iso: string): void {
+    this.setMeta(`yagna_cursor_${node}`, iso);
+  }
+
+  /** Per-provider computed/invoiced/paid aggregates inside a window, plus
+   *  the operator wallet each provider pays out to. Grouping into operators
+   *  happens in the API layer. */
+  operatorProviderRows(since: string | null): OperatorProviderRow[] {
+    const params: Record<string, string | number> = { $since: since ?? "0000" };
+    return this.db
+      .query(
+        `
+      SELECT
+        p.provider_id,
+        p.name,
+        p.last_seen,
+        -- newest payee wins when an operator rotates wallets
+        (SELECT i.payee_addr FROM invoices i
+          WHERE i.provider_id = p.provider_id AND i.payee_addr IS NOT NULL
+          ORDER BY i.issued_at DESC LIMIT 1) AS invoice_wallet,
+        h.wallet AS hw_wallet,
+        (SELECT COUNT(*) FROM agreements a
+          WHERE a.provider_id = p.provider_id AND a.last_updated > $since) AS agreements,
+        (SELECT SUM(a.work) FROM agreements a
+          WHERE a.provider_id = p.provider_id AND a.last_updated > $since) AS work,
+        (SELECT SUM(a.cost) FROM agreements a
+          WHERE a.provider_id = p.provider_id AND a.last_updated > $since) AS cost,
+        (SELECT SUM(a.duration_hours) FROM agreements a
+          WHERE a.provider_id = p.provider_id AND a.last_updated > $since) AS hours,
+        (SELECT COUNT(*) FROM invoices i
+          WHERE i.provider_id = p.provider_id AND i.issued_at > $since) AS invoice_count,
+        (SELECT SUM(i.amount) FROM invoices i
+          WHERE i.provider_id = p.provider_id AND i.issued_at > $since) AS invoiced,
+        (SELECT SUM(i.amount) FROM invoices i
+          WHERE i.provider_id = p.provider_id AND i.issued_at > $since
+            AND i.status IN ('ACCEPTED', 'SETTLED')) AS accepted,
+        (SELECT SUM(i.amount) FROM invoices i
+          WHERE i.provider_id = p.provider_id AND i.issued_at > $since
+            AND i.status = 'SETTLED') AS settled,
+        (SELECT MAX(i.issued_at) FROM invoices i
+          WHERE i.provider_id = p.provider_id) AS last_invoice_at
+      FROM providers p
+      LEFT JOIN provider_hw h ON h.provider_id = p.provider_id
+      `,
+      )
+      .all(params) as OperatorProviderRow[];
+  }
+
+  /** On-chain transfers per operator wallet inside a window (ground truth
+   *  of what was actually paid, across all stones' daemons). */
+  paymentsByWallet(since: string | null): { payee_addr: string; paid: number }[] {
+    return this.db
+      .query(
+        `SELECT payee_addr, SUM(amount) AS paid FROM payments
+         WHERE payee_addr IS NOT NULL AND paid_at > $since
+         GROUP BY payee_addr`,
+      )
+      .all({ $since: since ?? "0000" }) as {
+      payee_addr: string;
+      paid: number;
+    }[];
+  }
+}
+
+export interface InvoiceUpsert {
+  invoiceId: string;
+  node: string | null;
+  providerId: string;
+  payeeAddr: string | null;
+  agreementId: string | null;
+  paymentPlatform: string | null;
+  amount: number;
+  status: string;
+  issuedAt: string | null;
+  paymentDueAt: string | null;
+}
+
+export interface PaymentUpsert {
+  paymentId: string;
+  node: string | null;
+  payeeAddr: string | null;
+  amount: number;
+  paidAt: string | null;
+}
+
+export interface OperatorProviderRow {
+  provider_id: string;
+  name: string | null;
+  last_seen: string | null;
+  invoice_wallet: string | null;
+  hw_wallet: string | null;
+  agreements: number;
+  work: number | null;
+  cost: number | null;
+  hours: number | null;
+  invoice_count: number;
+  invoiced: number | null;
+  accepted: number | null;
+  settled: number | null;
+  last_invoice_at: string | null;
 }
 
 interface ProviderHwRow {
@@ -775,6 +976,7 @@ interface ProviderHwRow {
   price_cpu_hour: number | null;
   price_start: number | null;
   online: number | null;
+  wallet: string | null;
   fetched_at: string;
   error: string | null;
 }

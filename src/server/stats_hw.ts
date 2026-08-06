@@ -31,6 +31,7 @@ export interface ParsedHw {
   priceCpuHour: number | null;
   priceStart: number | null;
   online: boolean | null;
+  wallet: string | null; // the operator payout wallet (groups providers)
 }
 
 function asNum(v: unknown): number | null {
@@ -78,7 +79,17 @@ export function parseProviderPage(html: string): ParsedHw | null {
     }
   }
 
+  const walletRaw =
+    props["wallet"] ??
+    props["golem.com.payment.platform.erc20-polygon-glm.address"] ??
+    props["golem.com.payment.platform.erc20-mainnet-glm.address"];
+  const wallet =
+    typeof walletRaw === "string" && /^0x[0-9a-fA-F]{40}$/.test(walletRaw)
+      ? walletRaw.toLowerCase()
+      : null;
+
   return {
+    wallet,
     cpuBrand: typeof props["golem.inf.cpu.brand"] === "string"
       ? (props["golem.inf.cpu.brand"] as string)
       : null,
@@ -133,6 +144,7 @@ export async function refreshProviderHw(store: Store): Promise<number> {
           priceCpuHour: null,
           priceStart: null,
           online: null,
+          wallet: null,
           error: "no data on stats.golem.network",
         });
       }
@@ -149,6 +161,7 @@ export async function refreshProviderHw(store: Store): Promise<number> {
         priceCpuHour: null,
         priceStart: null,
         online: null,
+        wallet: null,
         error: String(e),
       });
     }

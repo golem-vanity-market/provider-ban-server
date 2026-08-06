@@ -62,6 +62,22 @@ export const config = {
   blacklistBans7d: num("BLACKLIST_BANS_7D", 5),
   newMaxAgreements: num("NEW_MAX_AGREEMENTS", 3),
 
+  // Invoice/payment ingestion from the stones' yagna daemons (payment API).
+  // The daemons keep little history (their data dirs are recreated on
+  // redeploys), so the ban server persists everything it sees. Appkeys and
+  // API urls are read from each stone's vanity/.env under yagnaServicesDir.
+  yagnaEnabled: num("YAGNA_ENABLED", 1) !== 0,
+  yagnaServicesDir: str(
+    "YAGNA_SERVICES_DIR",
+    "/home/ubuntu/golem-vanity-market/vanity-nodes-deployer/services",
+  ),
+  yagnaPollSecs: num("YAGNA_POLL_SECS", 60),
+  // Re-fetch window: invoices keep their issue timestamp while their status
+  // advances (RECEIVED -> ACCEPTED -> SETTLED), so each poll re-reads this
+  // many hours back and upserts to catch status changes.
+  yagnaLookbackHours: num("YAGNA_LOOKBACK_HOURS", 72),
+  yagnaMaxItems: num("YAGNA_MAX_ITEMS", 2000),
+
   // Hardware/price-list scraping from stats.golem.network provider pages.
   statsHwEnabled: num("STATS_HW_ENABLED", 1) !== 0,
   statsHwTtlHours: num("STATS_HW_TTL_HOURS", 12),

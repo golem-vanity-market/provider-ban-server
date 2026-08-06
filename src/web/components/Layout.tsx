@@ -47,6 +47,9 @@ export default function Layout() {
           <NavLink to="/bans" className={linkClass} style={linkStyle}>
             Bans
           </NavLink>
+          <NavLink to="/operators" className={linkClass} style={linkStyle}>
+            Operators
+          </NavLink>
         </nav>
       </header>
       <Outlet />

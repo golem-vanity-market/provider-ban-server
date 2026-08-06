@@ -104,6 +104,7 @@ export interface ProviderHw {
   priceCpuHour: number | null; // GLM/h per busy CPU thread (cpu_sec coeff)
   priceStart: number | null; // fixed start fee in GLM
   online: boolean | null;
+  wallet: string | null; // operator payout wallet
   fetchedAt: string;
 }
 
@@ -189,6 +190,57 @@ export interface NodeStatus {
   bannedReported: number;
   lastError: string | null;
   lastSuccessAt: string | null;
+}
+
+/** One provider's computed/invoiced/paid numbers inside a window
+ *  (Operators tab). Money from the yagna payment API; work/cost from the
+ *  estimator history. */
+export interface OperatorProviderReport {
+  providerId: string;
+  name: string | null;
+  lastSeen: string | null;
+  agreements: number;
+  work: number; // attempts (hashes)
+  cost: number; // GLM accrued per the estimators (debit notes)
+  hours: number;
+  efficiency: number | null; // TH/GLM inside the window
+  invoiceCount: number;
+  invoiced: number; // GLM invoiced by the provider
+  accepted: number; // GLM in ACCEPTED or SETTLED invoices
+  settled: number; // GLM in SETTLED (actually paid) invoices
+  lastInvoiceAt: string | null;
+}
+
+export interface OperatorReport {
+  wallet: string | null; // null = providers with no known payout wallet yet
+  providers: OperatorProviderReport[];
+  agreements: number;
+  work: number;
+  cost: number;
+  hours: number;
+  efficiency: number | null;
+  invoiceCount: number;
+  invoiced: number;
+  accepted: number;
+  settled: number;
+  /** On-chain GLM transferred to this wallet inside the window (payments
+   *  are batched per wallet, so this exists only at the operator level). */
+  paid: number;
+}
+
+export interface OperatorsResponse {
+  operators: OperatorReport[];
+  totals: {
+    operators: number;
+    providers: number;
+    work: number;
+    cost: number;
+    invoiced: number;
+    accepted: number;
+    settled: number;
+    paid: number;
+  };
+  timestamp: string;
 }
 
 export interface ActiveBansResponse {

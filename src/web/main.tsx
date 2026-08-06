@@ -6,6 +6,7 @@ import Dashboard from "./pages/Dashboard.tsx";
 import Providers from "./pages/Providers.tsx";
 import ProviderDetail from "./pages/ProviderDetail.tsx";
 import Bans from "./pages/Bans.tsx";
+import Operators from "./pages/Operators.tsx";
 import "./styles.css";
 
 const router = createBrowserRouter(
@@ -18,6 +19,7 @@ const router = createBrowserRouter(
         { path: "providers", element: <Providers /> },
         { path: "providers/:id", element: <ProviderDetail /> },
         { path: "bans", element: <Bans /> },
+        { path: "operators", element: <Operators /> },
       ],
     },
   ],

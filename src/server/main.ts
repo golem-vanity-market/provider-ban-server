@@ -1,6 +1,7 @@
 import { config } from "./config.ts";
 import { openDb, Store } from "./db.ts";
 import { Collector } from "./collector.ts";
+import { YagnaIngest } from "./yagna.ts";
 import { seedFromEstimatorsFile } from "./seed.ts";
 import { createHandler } from "./api.ts";
 
@@ -16,6 +17,9 @@ seedFromEstimatorsFile(store);
 const collector = new Collector(store);
 collector.start();
 
+const yagna = new YagnaIngest(store);
+yagna.start();
+
 const server = Bun.serve({
   hostname: config.host,
   port: config.port,
@@ -27,6 +31,7 @@ console.log(`[main] listening on http://${config.host}:${config.port}`);
 function shutdown(): void {
   console.log("[main] shutting down");
   collector.stop();
+  yagna.stop();
   server.stop(true);
   db.close();
   process.exit(0);

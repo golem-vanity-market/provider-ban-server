@@ -2,6 +2,7 @@ import type {
   ActiveBansResponse,
   BanRow,
   FleetSummary,
+  OperatorsResponse,
   ProviderDetail,
   ProviderSummary,
   TargetsResponse,
@@ -57,6 +58,8 @@ export const api = {
       `/api/v1/providers/${id}?limit=${limit}&offset=${offset}`,
     ),
   activeBans: () => getJson<ActiveBansResponse>("/api/v1/bans/active"),
+  operators: (window: string) =>
+    getJson<OperatorsResponse>(`/api/v1/operators?window=${window}`),
   targets: () => getJson<TargetsResponse>("/api/v1/targets"),
   setTarget: (
     id: string | "global",
