@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stats-portal provider API — provider-ban-server</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1a202c; --muted: #5a6472; --line: #e2e8f0;
+    --code-bg: #f6f8fa; --accent: #2563eb;
+    --info: #2563eb; --warning: #b45309; --critical: #b91c1c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1419; --fg: #e6e8eb; --muted: #9aa4b2; --line: #2a3441;
+      --code-bg: #1a222c; --accent: #60a5fa;
+      --info: #60a5fa; --warning: #f59e0b; --critical: #f87171;
+    }
+  }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 880px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+  h2 { font-size: 1.15rem; margin: 2rem 0 .5rem; border-bottom: 1px solid var(--line); padding-bottom: .25rem; }
+  .sub { color: var(--muted); margin-bottom: 1.5rem; }
+  code, pre { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: .87em; }
+  code { background: var(--code-bg); padding: .1em .35em; border-radius: 4px; }
+  pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+        padding: .9rem 1rem; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: .5rem 0 1rem; }
+  th, td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid var(--line);
+           vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: .82rem; text-transform: uppercase;
+       letter-spacing: .03em; }
+  .sev { font-weight: 600; }
+  .sev.info { color: var(--info); } .sev.warning { color: var(--warning); }
+  .sev.critical { color: var(--critical); }
+  a { color: var(--accent); }
+  .endpoint { background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+              padding: .7rem 1rem; overflow-x: auto; white-space: nowrap; }
+  .method { color: var(--accent); font-weight: 700; margin-right: .5em; }
+</style>
+</head>
+<body>
+<main>
+<h1>Stats-portal provider API</h1>
+<p class="sub">Per-provider standing on the vanity-market requestor fleet: current
+ban status, the enforced performance targets, measured performance, and
+ready-to-display <strong>hints</strong> — including how much a provider should
+lower its price to meet the efficiency target.</p>
+
+<div class="endpoint"><code><span class="method">GET</span>https://stone.vanity.market/nmpdmxzhrm/ban-server/api/v1/portal/providers/&lt;providerId&gt;</code></div>
+
+<p><code>providerId</code> is the provider's node id
+(<code>0x</code> + 40 hex chars, as shown on
+<a href="https://stats.golem.network">stats.golem.network</a>). Responses are
+JSON; unknown providers return <code>404 {"error":"Provider not found"}</code>.
+CORS is open (<code>Access-Control-Allow-Origin: *</code>), so the endpoint can
+be called directly from browser code. No auth. Data refreshes roughly every
+30&nbsp;seconds.</p>
+
+<pre><code>curl -s https://stone.vanity.market/nmpdmxzhrm/ban-server/api/v1/portal/providers/0x6544...9e02</code></pre>
+
+<h2>Response fields</h2>
+<table>
+<tr><th>Field</th><th>Meaning</th></tr>
+<tr><td><code>score</code>, <code>category</code></td><td>0–100 reputation score and bucket: <code>trusted</code> / <code>reliable</code> / <code>average</code> / <code>underperformer</code> / <code>new</code> / <code>blacklisted</code> / <code>banned</code>.</td></tr>
+<tr><td><code>status</code></td><td>Ban state: <code>banned</code> + <code>activeBan</code> (reason, <code>expiresAt</code>; bans expire automatically), <code>bansLast24h</code> and <code>nextBanHours</code> (ban durations escalate — the Nth ban within 24&nbsp;h lasts N hours), <code>activeAgreements</code>, <code>lastSeen</code>.</td></tr>
+<tr><td><code>targets</code></td><td>The thresholds the fleet enforces for <em>this</em> provider: <code>efficiencyTarget</code> (TH/GLM — terahashes delivered per GLM billed) and <code>speedTarget</code> (H/s per agreement). <code>relaxed: true</code> means a per-provider override applies (good performers earn a more lenient target automatically).</td></tr>
+<tr><td><code>performance</code></td><td>Measured inside the freshest window with billing data (<code>window</code>: <code>d1</code> → <code>d7</code> → <code>all</code>): agreements, <code>workHashes</code>, <code>costGlm</code>, rented <code>hours</code>, <code>efficiencyThPerGlm</code>, <code>avgSpeedHps</code>, <code>avgCostPerHourGlm</code>, bans issued in the window.</td></tr>
+<tr><td><code>pricing</code></td><td>The provider's own offered price list (scraped from stats.golem.network; <code>null</code> until fetched): <code>priceCpuHour</code> (GLM/h per busy CPU thread — the coefficient that matters most), <code>priceEnvHour</code>, <code>priceStart</code>, <code>monthlyPriceGlm</code>.</td></tr>
+<tr><td><code>hints</code></td><td>Actionable messages to show the provider — see below.</td></tr>
+</table>
+
+<h2>Hints</h2>
+<p>Each hint is <code>{id, severity, message, data?}</code>. <code>message</code>
+is display-ready English; <code>data</code> carries the numbers if the portal
+wants to render its own copy.</p>
+<table>
+<tr><th>id</th><th>Severity</th><th>Meaning</th></tr>
+<tr><td><code>price-too-high</code></td><td><span class="sev warning">warning</span> / <span class="sev critical">critical</span></td><td>Measured efficiency is below the enforced target — the provider will keep getting terminated and banned. <code>data</code> has <code>suggestedPriceCutPct</code> and <code>suggestedMaxCostPerHour</code>: the price cut that meets the target at the provider's current speed (efficiency scales inversely with price). <strong>This is the main "lower your price" signal.</strong></td></tr>
+<tr><td><code>speed-below-target</code></td><td><span class="sev warning">warning</span></td><td>Average per-agreement speed under the target. Usually capacity split across too many concurrent agreements, not pricing — advise fewer parallel agreements or more CPU.</td></tr>
+<tr><td><code>banned</code></td><td><span class="sev critical">critical</span></td><td>Active ban, with expiry and reason. Bans lift automatically.</td></tr>
+<tr><td><code>ban-escalation</code></td><td><span class="sev warning">warning</span></td><td>Bans in the last 24&nbsp;h escalate the next ban's duration; a clean 24&nbsp;h resets it.</td></tr>
+<tr><td><code>headroom</code></td><td><span class="sev info">info</span></td><td>Efficiency well above target — pricing headroom; sustained ≥2× target earns an automatically relaxed target.</td></tr>
+<tr><td><code>stale</code></td><td><span class="sev info">info</span></td><td>No agreements with this fleet in 24&nbsp;h; stats may be outdated.</td></tr>
+<tr><td><code>ok</code></td><td><span class="sev info">info</span></td><td>Meeting all targets, nothing to do.</td></tr>
+</table>
+
+<h2>Example response</h2>
+<pre><code>{
+  "providerId": "0x6544c714a2a4e24713c1cbe58bf9b22162c19e02",
+  "name": "JIT-GridRunner",
+  "score": 78.5,
+  "category": "banned",
+  "statsGolemUrl": "https://stats.golem.network/network/provider/0x6544c714a2a4e24713c1cbe58bf9b22162c19e02",
+  "status": {
+    "banned": true,
+    "activeBan": {
+      "id": 5482,
+      "source": "stone-5",
+      "reason": "reported by stone-5 (stone-local ban, no detail)",
+      "bannedAt": "2026-08-08T12:30:29.586Z",
+      "expiresAt": "2026-08-08T14:30:29.586Z"
+    },
+    "bansLast24h": 2,
+    "nextBanHours": 3,
+    "lastBanAt": "2026-08-08T12:30:29.586Z",
+    "lastBanReason": "reported by stone-5 (stone-local ban, no detail)",
+    "activeAgreements": 0,
+    "lastSeen": "2026-08-08T13:18:17.937Z"
+  },
+  "targets": { "efficiencyTarget": 0.0125, "speedTarget": 125000, "relaxed": false },
+  "performance": {
+    "window": "d1",
+    "agreements": 9,
+    "workHashes": 97291075584,
+    "costGlm": 0.7687976271217779,
+    "hours": 22.609211666666667,
+    "efficiencyThPerGlm": 0.1265496564398072,
+    "avgSpeedHps": 1195322.471732945,
+    "avgCostPerHourGlm": 0.03400373433874458,
+    "bans": 2
+  },
+  "pricing": {
+    "priceCpuHour": 0.0064,
+    "priceEnvHour": 0,
+    "priceStart": 0,
+    "monthlyPriceGlm": 57.1392,
+    "fetchedAt": "2026-08-08T02:30:56.738Z"
+  },
+  "hints": [
+    {
+      "id": "banned",
+      "severity": "critical",
+      "message": "Currently banned until 2026-08-08T14:30:29.586Z — reported by stone-5 (stone-local ban, no detail). Bans expire automatically; fixing the cause below prevents the next one."
+    },
+    {
+      "id": "ban-escalation",
+      "severity": "warning",
+      "message": "2 ban(s) in the last 24h — ban durations escalate, the next one would last 3h. A clean 24h resets the escalation."
+    },
+    {
+      "id": "headroom",
+      "severity": "info",
+      "message": "Efficiency (24h) is 10.1x the target — you have pricing headroom, and sustained work at ≥2x the target earns an automatic relaxed target.",
+      "data": { "efficiency": 0.1265496564398072, "efficiencyTarget": 0.0125 }
+    }
+  ],
+  "timestamp": "2026-08-08T13:28:47.123Z"
+}</code></pre>
+
+<p>And a <code>price-too-high</code> hint as it appears for an overpriced provider:</p>
+<pre><code>{
+  "id": "price-too-high",
+  "severity": "critical",
+  "message": "Measured efficiency (24h) is 0.1947 TH/GLM, below the enforced target of 0.3 TH/GLM. At your current speed you are overpriced by ~35%: you bill ~0.014665 GLM/h, but at most 0.009517 GLM/h would meet the target. Lower your price list (mainly the per-thread CPU price) or deliver more hashes for the same cost.",
+  "data": {
+    "efficiency": 0.19468626973491265,
+    "efficiencyTarget": 0.3,
+    "suggestedPriceCutPct": 35,
+    "currentCostPerHour": 0.014665478008055448,
+    "suggestedMaxCostPerHour": 0.009517
+  }
+}</code></pre>
+
+<h2>Units</h2>
+<p>efficiency = TH/GLM (hashes ÷ GLM ÷ 10¹²) · speed = H/s · price = GLM/h ·
+work = hashes (attempts). The suggested max price is
+<code>avgCostPerHourGlm × efficiency ÷ efficiencyTarget</code> — at unchanged
+speed, the price cut needed equals the efficiency shortfall.</p>
+</main>
+</body>
+</html>
