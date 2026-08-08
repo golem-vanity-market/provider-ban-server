@@ -2,7 +2,7 @@
 
 export type ProviderCategory =
   | "banned"
-  | "blacklisted"
+  | "risky"
   | "trusted"
   | "reliable"
   | "average"

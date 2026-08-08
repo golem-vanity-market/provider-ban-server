@@ -164,7 +164,9 @@ export function categorize(
 ): ProviderCategory {
   const all = stats.windows.all;
   if (stats.activeBan) return "banned";
-  if (stats.bans7d >= config.blacklistBans7d) return "blacklisted";
+  // Not currently banned (that case returned above) but banned so often
+  // this week that another ban is likely.
+  if (stats.bans7d >= config.blacklistBans7d) return "risky";
   if (all.agreements < config.newMaxAgreements && all.hours < 1) return "new";
   if (
     score >= config.trustedMinScore &&

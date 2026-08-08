@@ -26,7 +26,7 @@ const CATEGORY_ORDER: ProviderCategory[] = [
   "average",
   "underperformer",
   "new",
-  "blacklisted",
+  "risky",
   "banned",
 ];
 

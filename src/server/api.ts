@@ -214,7 +214,7 @@ export function createHandler(store: Store, collector: Collector) {
       const counts = store.fleetCounts();
       const categories: Record<ProviderCategory, number> = {
         banned: 0,
-        blacklisted: 0,
+        risky: 0,
         trusted: 0,
         reliable: 0,
         average: 0,

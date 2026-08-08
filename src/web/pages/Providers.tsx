@@ -36,7 +36,7 @@ const CATEGORIES: (ProviderCategory | "")[] = [
   "average",
   "underperformer",
   "new",
-  "blacklisted",
+  "risky",
   "banned",
 ];
 

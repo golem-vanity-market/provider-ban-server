@@ -30,7 +30,7 @@ all of them, with **escalating durations** — the Nth non-revoked ban within
 - **Scores** every provider 0–100 (efficiency vs target 35%, agreements
   without ban 25%, delivered volume 15%, time since last ban 15%, recently
   active 10%) and **categorizes**: `trusted / reliable / average /
-  underperformer / new / blacklisted / banned` (thresholds in `template.env`).
+  underperformer / new / risky (many recent bans, not currently banned) / banned` (thresholds in `template.env`).
 - **Serves** a REST API and a Vite/React dashboard (providers, per-provider
   agreement list with efficiency and price per agreement, ban history, score
   breakdown, links to `stats.golem.network/network/provider/<id>`).

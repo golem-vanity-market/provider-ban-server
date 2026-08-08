@@ -7,8 +7,8 @@ const CATEGORY_META: Record<
   { label: string; icon: string; colorVar: string }
 > = {
   banned: { label: "Banned", icon: "✕", colorVar: "--status-critical" },
-  blacklisted: {
-    label: "Blacklisted",
+  risky: {
+    label: "Risky",
     icon: "⊘",
     colorVar: "--status-serious",
   },
