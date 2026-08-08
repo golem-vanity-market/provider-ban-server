@@ -4,6 +4,7 @@ import { config } from "./config.ts";
 import type { Store } from "./db.ts";
 import type { Collector } from "./collector.ts";
 import { summarizeProvider } from "./scoring.ts";
+import { portalProviderReport } from "./portal.ts";
 import type {
   ActiveBansResponse,
   BanRow,
@@ -541,6 +542,23 @@ export function createHandler(store: Store, collector: Collector) {
         offset,
         timestamp: new Date().toISOString(),
       });
+    }
+
+    // Public stats-portal view: compact status + actionable hints.
+    const portalMatch = path.match(
+      /^\/portal\/providers\/(0x[0-9a-fA-F]{40})$/,
+    );
+    if (req.method === "GET" && portalMatch) {
+      const id = portalMatch[1].toLowerCase();
+      const agg = store.providerAggregates(id);
+      if (agg.length === 0)
+        return sendJSON(404, { error: "Provider not found" });
+      const summary = summarizeProvider(
+        agg[0],
+        targetsIndex(store).effectiveFor(id),
+        store.hwMap().get(id) ?? null,
+      );
+      return sendJSON(200, portalProviderReport(summary));
     }
 
     const provMatch = path.match(/^\/providers\/(0x[0-9a-fA-F]{40})$/);

@@ -48,6 +48,7 @@ all of them, with **escalating durations** — the Nth non-revoked ban within
 | GET | `/api/v1/providers?sort=&dir=&category=&search=&limit=&offset=` | provider list with stats, score, category |
 | GET | `/api/v1/providers/:id` | provider detail: agreements, per-agreement efficiency/price, bans, daily stats |
 | GET | `/api/v1/providers/:id/agreements` | paged agreement list |
+| GET | `/api/v1/portal/providers/:id` | public stats-portal view: compact status, targets, performance, price list and actionable `hints` (price cut needed to meet the efficiency target, ban escalation, speed advice) |
 | GET | `/providers/banned` | same shape as the stone endpoint (compatibility) |
 
 The requestor integration lives in `vanity-market-cli`

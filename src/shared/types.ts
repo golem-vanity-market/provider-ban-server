@@ -249,3 +249,63 @@ export interface ActiveBansResponse {
   timestamp: string;
   bans: BanRow[];
 }
+
+/** One actionable hint shown to a provider on the public stats portal. */
+export interface PortalHint {
+  id:
+    | "banned"
+    | "ban-escalation"
+    | "price-too-high"
+    | "headroom"
+    | "speed-below-target"
+    | "stale"
+    | "ok";
+  severity: "info" | "warning" | "critical";
+  message: string;
+  data?: Record<string, number | string | null>;
+}
+
+/** Compact per-provider report for the public stats portal
+ *  (GET /api/v1/portal/providers/:id). Field names carry their units. */
+export interface PortalProviderReport {
+  providerId: string;
+  name: string | null;
+  score: number;
+  category: ProviderCategory;
+  statsGolemUrl: string;
+  status: {
+    banned: boolean;
+    activeBan: ActiveBanInfo | null;
+    bansLast24h: number;
+    nextBanHours: number;
+    lastBanAt: string | null;
+    lastBanReason: string | null;
+    activeAgreements: number;
+    lastSeen: string | null;
+  };
+  targets: {
+    efficiencyTarget: number; // TH/GLM
+    speedTarget: number; // H/s
+    relaxed: boolean; // a per-provider override applies
+  };
+  performance: {
+    window: WindowKey; // freshest window with billing data
+    agreements: number;
+    workHashes: number;
+    costGlm: number;
+    hours: number;
+    efficiencyThPerGlm: number | null;
+    avgSpeedHps: number | null;
+    avgCostPerHourGlm: number | null;
+    bans: number;
+  };
+  pricing: {
+    priceCpuHour: number | null; // GLM/h per busy CPU thread
+    priceEnvHour: number | null; // GLM/h for the environment
+    priceStart: number | null; // fixed start fee, GLM
+    monthlyPriceGlm: number | null;
+    fetchedAt: string;
+  } | null;
+  hints: PortalHint[];
+  timestamp: string;
+}
