@@ -42,6 +42,28 @@ function buildHints(
     });
   }
 
+  // "failed to run command" bans mean the provider's exe-unit died or never
+  // ran the task (activity Terminated mid-command, capability check on a dead
+  // activity, ...) — a machine problem, not a pricing/performance one. Call
+  // that out explicitly so operators don't tune prices when they should be
+  // reading their own logs.
+  const latestReason = s.stats.activeBan?.reason ?? s.stats.lastBanReason;
+  if (latestReason && /failed to run (the )?command/i.test(latestReason)) {
+    hints.push({
+      id: "execution-failure",
+      severity: "warning",
+      message:
+        "The most recent cooldown was NOT about performance or pricing: your node " +
+        "accepted a task but failed to run it (the runtime terminated mid-command). " +
+        "This points to a technical issue on the provider machine — e.g. the " +
+        "provider agent or VM runtime restarting, crashing, or being killed " +
+        "(out-of-memory is a common cause). Check your provider logs" +
+        (s.stats.lastBanAt ? ` around ${s.stats.lastBanAt}` : "") +
+        "; price or speed changes will not prevent the next one.",
+      data: { lastBanAt: s.stats.lastBanAt, reason: latestReason },
+    });
+  }
+
   if (s.stats.dailyBans > 0) {
     hints.push({
       id: "ban-escalation",

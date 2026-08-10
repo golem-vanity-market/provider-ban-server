@@ -255,6 +255,7 @@ export interface PortalHint {
   id:
     | "banned"
     | "ban-escalation"
+    | "execution-failure"
     | "price-too-high"
     | "headroom"
     | "speed-below-target"
