@@ -63,15 +63,18 @@ function buildHints(
       /failed to run (?:the )?command\s*[(:]\s*(.+?)\)?$/i.exec(
         latestReason,
       )?.[1] ?? null;
-    const requestorSide = detail !== null && /debit\s*-?\s*note/i.test(detail);
+    const requestorSide =
+      detail !== null &&
+      (/debit\s*-?\s*note/i.test(detail) ||
+        /no activity (was )?created/i.test(detail));
     if (requestorSide) {
       hints.push({
         id: "execution-interrupted",
         severity: "info",
         message:
           "The most recent cooldown was NOT caused by your node: the task was " +
-          "interrupted because the requestor side was slow to acknowledge payment " +
-          "messages (DebitNotes) — this typically happens around fleet restarts. " +
+          "interrupted by a requestor-side issue (slow payment acknowledgment " +
+          "or an agreement the fleet signed but did not use in time). " +
           `Recorded cause: "${detail}". No action is needed on your machine, and ` +
           "price or speed changes are not related to it.",
         data: { lastBanAt: s.stats.lastBanAt, reason: latestReason },
