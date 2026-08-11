@@ -293,7 +293,24 @@ export class Collector {
     const loop = async (): Promise<void> => {
       if (this.stopped) return;
       try {
-        await this.collectOnce();
+        // Watchdog: a single hung await inside a cycle (observed 2026-08-11:
+        // a fetch that never resolved despite its abort signal) must not
+        // freeze the loop forever — the periodic ban reset and all ingestion
+        // ride on it. The stuck promise is abandoned, not cancelled.
+        let watchdog: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([
+            this.collectOnce(),
+            new Promise((_, reject) => {
+              watchdog = setTimeout(
+                () => reject(new Error("cycle watchdog timeout (180s)")),
+                180_000,
+              );
+            }),
+          ]);
+        } finally {
+          clearTimeout(watchdog);
+        }
       } catch (e) {
         console.error("[collector] cycle failed:", e);
       }
