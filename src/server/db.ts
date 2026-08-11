@@ -275,6 +275,29 @@ export class Store {
     return row !== null;
   }
 
+  /** True when a ban from this source ran out naturally (not revoked) at or
+   *  after `sinceIso`. Used by the collector to recognize expiry echoes: the
+   *  stone's local list still holds the provider after the server ban
+   *  expired, and re-ingesting it would silently extend the cooldown as a
+   *  fresh "no detail" row. */
+  hadBanExpiringSince(
+    providerId: string,
+    source: string,
+    sinceIso: string,
+  ): boolean {
+    const now = new Date().toISOString();
+    const row = this.db
+      .query(
+        `SELECT id FROM bans
+         WHERE provider_id = $id AND source = $source
+           AND revoked_at IS NULL
+           AND expires_at <= $now AND expires_at >= $since
+         LIMIT 1`,
+      )
+      .get({ $id: providerId, $source: source, $now: now, $since: sinceIso });
+    return row !== null;
+  }
+
   /** Non-revoked bans of this provider within the last 24h (and after the
    *  escalation cutoff set when the escalating-ban logic was introduced). */
   dailyBans(providerId: string): number {

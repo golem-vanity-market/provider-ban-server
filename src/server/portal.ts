@@ -42,26 +42,57 @@ function buildHints(
     });
   }
 
-  // "failed to run command" bans mean the provider's exe-unit died or never
-  // ran the task (activity Terminated mid-command, capability check on a dead
-  // activity, ...) — a machine problem, not a pricing/performance one. Call
-  // that out explicitly so operators don't tune prices when they should be
-  // reading their own logs.
+  // "failed to run command" cooldowns: the task ended before completing. The
+  // reason may carry the recorded cause in parentheses (agreement-termination
+  // reason or the execution error) — use it to distinguish requestor-side
+  // interruptions (e.g. DebitNote-acceptance lag on our side; the provider
+  // did nothing wrong) from genuine machine-side failures. Only shown while
+  // the cooldown is active or within 24h of it — stale advice about a
+  // long-expired event confused operators more than it helped.
   const latestReason = s.stats.activeBan?.reason ?? s.stats.lastBanReason;
-  if (latestReason && /failed to run (the )?command/i.test(latestReason)) {
-    hints.push({
-      id: "execution-failure",
-      severity: "warning",
-      message:
-        "The most recent cooldown was NOT about performance or pricing: your node " +
-        "accepted a task but failed to run it (the runtime terminated mid-command). " +
-        "This points to a technical issue on the provider machine — e.g. the " +
-        "provider agent or VM runtime restarting, crashing, or being killed " +
-        "(out-of-memory is a common cause). Check your provider logs" +
-        (s.stats.lastBanAt ? ` around ${s.stats.lastBanAt}` : "") +
-        "; price or speed changes will not prevent the next one.",
-      data: { lastBanAt: s.stats.lastBanAt, reason: latestReason },
-    });
+  const lastBanMs = s.stats.lastBanAt ? Date.parse(s.stats.lastBanAt) : NaN;
+  const banIsRecent =
+    s.stats.activeBan !== null ||
+    (Number.isFinite(lastBanMs) && Date.now() - lastBanMs < 24 * 3600_000);
+  if (
+    latestReason &&
+    banIsRecent &&
+    /failed to run (the )?command/i.test(latestReason)
+  ) {
+    const detail =
+      /failed to run (?:the )?command\s*[(:]\s*(.+?)\)?$/i.exec(
+        latestReason,
+      )?.[1] ?? null;
+    const requestorSide = detail !== null && /debit\s*-?\s*note/i.test(detail);
+    if (requestorSide) {
+      hints.push({
+        id: "execution-interrupted",
+        severity: "info",
+        message:
+          "The most recent cooldown was NOT caused by your node: the task was " +
+          "interrupted because the requestor side was slow to acknowledge payment " +
+          "messages (DebitNotes) — this typically happens around fleet restarts. " +
+          `Recorded cause: "${detail}". No action is needed on your machine, and ` +
+          "price or speed changes are not related to it.",
+        data: { lastBanAt: s.stats.lastBanAt, reason: latestReason },
+      });
+    } else {
+      hints.push({
+        id: "execution-failure",
+        severity: "warning",
+        message:
+          "The most recent cooldown was NOT about performance or pricing: your node " +
+          "accepted a task but the task ended before completing. " +
+          (detail ? `Recorded cause: "${detail}". ` : "") +
+          "This usually points to a technical issue on the provider machine — e.g. the " +
+          "provider agent or VM runtime restarting, crashing, or being killed " +
+          "(out-of-memory is a common cause) — though brief requestor-side " +
+          "interruptions can occasionally look the same. Check your provider logs" +
+          (s.stats.lastBanAt ? ` around ${s.stats.lastBanAt}` : "") +
+          "; price or speed changes will not prevent the next one.",
+        data: { lastBanAt: s.stats.lastBanAt, reason: latestReason },
+      });
+    }
   }
 
   if (s.stats.dailyBans > 0) {

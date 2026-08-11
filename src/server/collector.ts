@@ -188,23 +188,39 @@ export class Collector {
     )) as { bannedProviders?: string[] } | null;
     if (bansJson?.bannedProviders && Array.isArray(bansJson.bannedProviders)) {
       st.bannedReported = bansJson.bannedProviders.length;
+      // Expiry-echo guard: a stone's local list never expires entries, so
+      // after a server ban runs out the provider is still listed and would be
+      // re-ingested as a fresh "no detail" ban — silently extending the
+      // cooldown until the next fleet reset (this was ~95% of all placeholder
+      // rows). Skip bare-list entries whose (provider, source) ban expired
+      // naturally after the stone could last have cleared its list (fleet
+      // reset, bounded by the stones' 6h restart cadence). A genuinely new
+      // stone ban still arrives via the stone's own detailed POST.
+      const lastReset = this.store.getMeta("last_fleet_ban_reset");
+      const sixHoursAgo = new Date(Date.now() - 6 * 3600_000).toISOString();
+      const echoCutoff =
+        lastReset && lastReset > sixHoursAgo ? lastReset : sixHoursAgo;
       for (const rawId of bansJson.bannedProviders) {
         if (typeof rawId !== "string" || !rawId.startsWith("0x")) continue;
         const providerId = rawId.toLowerCase();
         // Idempotent: one active ban per (provider, reporting node). When a
         // stone resets its own list at cycle end the fleet-wide clock keeps
         // running (OPERATIONS.md 6b).
-        if (!this.store.hasActiveBan(providerId, node.nodeName)) {
-          this.store.insertBan({
-            providerId,
-            source: node.nodeName,
-            // The stone list carries no reasons; the stone's own POST (with
-            // the detailed measured-vs-target reason) usually arrives first
-            // and wins the (provider, source) idempotency slot.
-            reason: `reported by ${node.nodeName} (stone-local ban, no detail)`,
-            agreementId: null,
-          });
+        if (this.store.hasActiveBan(providerId, node.nodeName)) continue;
+        if (
+          this.store.hadBanExpiringSince(providerId, node.nodeName, echoCutoff)
+        ) {
+          continue; // stale leftover of an expired ban, not a new event
         }
+        this.store.insertBan({
+          providerId,
+          source: node.nodeName,
+          // The stone list carries no reasons; the stone's own POST (with
+          // the detailed measured-vs-target reason) usually arrives first
+          // and wins the (provider, source) idempotency slot.
+          reason: `reported by ${node.nodeName} (stone-local ban, no detail)`,
+          agreementId: null,
+        });
       }
     }
   }
