@@ -444,6 +444,12 @@ export class Store {
     const monthAgo = new Date(Date.now() - 30 * 24 * 3600_000).toISOString();
     const now = new Date().toISOString();
     const where = providerId ? "WHERE p.provider_id = $pid" : "";
+    // The `ab`/`la` subqueries below pick one row per provider. SQLite cannot
+    // push the outer `where` into a windowed subquery, so when we only want a
+    // single provider we repeat the predicate inside them — otherwise every
+    // single-provider lookup would rank all 137k agreements first.
+    const abPid = providerId ? "b1.provider_id = $pid AND" : "";
+    const laPid = providerId ? "WHERE a1.provider_id = $pid" : "";
     const cutoff = this.getMeta("ban_count_cutoff") ?? "";
     // "Computing right now": the stone's estimator updated within the last
     // few collector cycles.
@@ -513,22 +519,22 @@ export class Store {
       FROM providers p
       LEFT JOIN agreements a ON a.provider_id = p.provider_id
       LEFT JOIN (
-        SELECT b1.* FROM bans b1
-        WHERE b1.revoked_at IS NULL AND b1.expires_at > $now
-          AND b1.id = (
-            SELECT b2.id FROM bans b2
-            WHERE b2.provider_id = b1.provider_id
-              AND b2.revoked_at IS NULL AND b2.expires_at > $now
-            ORDER BY b2.expires_at DESC LIMIT 1
-          )
+        SELECT * FROM (
+          SELECT b1.*, ROW_NUMBER() OVER (
+            PARTITION BY b1.provider_id ORDER BY b1.expires_at DESC, b1.id DESC
+          ) rn
+          FROM bans b1
+          WHERE ${abPid} b1.revoked_at IS NULL AND b1.expires_at > $now
+        ) WHERE rn = 1
       ) ab ON ab.provider_id = p.provider_id
       LEFT JOIN (
-        SELECT a1.* FROM agreements a1
-        WHERE a1.rowid = (
-          SELECT a2.rowid FROM agreements a2
-          WHERE a2.provider_id = a1.provider_id
-          ORDER BY a2.last_updated DESC LIMIT 1
-        )
+        SELECT * FROM (
+          SELECT a1.*, ROW_NUMBER() OVER (
+            PARTITION BY a1.provider_id
+            ORDER BY a1.last_updated DESC, a1.rowid DESC
+          ) rn
+          FROM agreements a1 ${laPid}
+        ) WHERE rn = 1
       ) la ON la.provider_id = p.provider_id
       ${where}
       GROUP BY p.provider_id
