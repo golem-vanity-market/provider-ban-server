@@ -311,3 +311,55 @@ export interface PortalProviderReport {
   hints: PortalHint[];
   timestamp: string;
 }
+
+// --- Rotation scheduler (ban system replacement) ---
+
+export type RotationTier = "A" | "B" | "C" | "D" | "new";
+
+export type RotationState =
+  | "active" // holding a slot right now
+  | "resting" // session just ended, rest period running
+  | "eligible" // may win the next slot lottery
+  | "suspended"; // manual ops suspension (active row in the bans table)
+
+export interface RankingScoreBreakdown {
+  efficiency: number;
+  reliability: number;
+  volume: number;
+  speed: number;
+  freshness: number;
+}
+
+export interface RankingEntry {
+  providerId: string;
+  name: string | null;
+  score: number; // 0-100, score v2 (no ban components)
+  tier: RotationTier;
+  weight: number; // lottery weight the stones draw with
+  ttlMinutes: number; // session length; 0 = until the cycle restart
+  restMinutes: number; // rest started when a session ends
+  state: RotationState;
+  eligible: boolean; // state === "eligible" (what the stones consume)
+  restingUntil: string | null;
+  wallet: string | null; // operator payout wallet
+  walletActive: number; // slots this wallet holds right now
+  walletAtCap: boolean;
+  breakdown: RankingScoreBreakdown;
+  lastSeen: string | null;
+  hours7d: number;
+  efficiency7d: number | null;
+}
+
+export interface RankingResponse {
+  timestamp: string;
+  unknown: { weight: number; ttlMinutes: number };
+  walletMaxActive: number;
+  counts: {
+    listed: number;
+    active: number;
+    resting: number;
+    eligible: number;
+    suspended: number;
+  };
+  providers: RankingEntry[];
+}

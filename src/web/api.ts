@@ -5,6 +5,7 @@ import type {
   OperatorsResponse,
   ProviderDetail,
   ProviderSummary,
+  RankingResponse,
   TargetsResponse,
 } from "../shared/types.ts";
 
@@ -58,6 +59,7 @@ export const api = {
       `/api/v1/providers/${id}?limit=${limit}&offset=${offset}`,
     ),
   activeBans: () => getJson<ActiveBansResponse>("/api/v1/bans/active"),
+  ranking: () => getJson<RankingResponse>("/api/v1/ranking"),
   operators: (window: string) =>
     getJson<OperatorsResponse>(`/api/v1/operators?window=${window}`),
   targets: () => getJson<TargetsResponse>("/api/v1/targets"),

@@ -42,6 +42,9 @@ export interface ProviderAggRow {
   hours_7d: number | null;
   hours_30d: number | null;
   hours_all: number | null;
+  // Sessions in the last 7d that accrued real cost but produced ~no work —
+  // the "paid for nothing" signal the rotation reliability score uses.
+  agr_7d_zero: number;
   successes: number | null;
   last_agr_id: string | null;
   last_agr_node: string | null;
@@ -485,6 +488,8 @@ export class Store {
         SUM(a.duration_hours) FILTER (WHERE a.last_updated > $weekAgo) AS hours_7d,
         SUM(a.duration_hours) FILTER (WHERE a.last_updated > $monthAgo) AS hours_30d,
         SUM(a.duration_hours) AS hours_all,
+        COUNT(a.agreement_id) FILTER (WHERE a.last_updated > $weekAgo
+          AND a.cost > 0.005 AND a.work < 1e6) AS agr_7d_zero,
         SUM(a.successes) AS successes,
         la.agreement_id AS last_agr_id,
         la.node AS last_agr_node,
@@ -937,6 +942,31 @@ export class Store {
       `,
       )
       .all(params) as OperatorProviderRow[];
+  }
+
+  /** provider_id -> operator payout wallet, invoice payeeAddr first (where
+   *  the money actually goes), stats-page wallet as the fallback. One
+   *  windowed pass over invoices — cache the result, don't call per provider. */
+  providerWalletMap(): Map<string, string> {
+    const map = new Map<string, string>();
+    const hwRows = this.db
+      .query(
+        `SELECT provider_id, wallet FROM provider_hw WHERE wallet IS NOT NULL`,
+      )
+      .all() as { provider_id: string; wallet: string }[];
+    for (const r of hwRows) map.set(r.provider_id, r.wallet.toLowerCase());
+    const invRows = this.db
+      .query(
+        `SELECT provider_id, payee_addr FROM (
+           SELECT i.provider_id, i.payee_addr, ROW_NUMBER() OVER (
+             PARTITION BY i.provider_id ORDER BY i.issued_at DESC
+           ) rn
+           FROM invoices i WHERE i.payee_addr IS NOT NULL
+         ) WHERE rn = 1`,
+      )
+      .all() as { provider_id: string; payee_addr: string }[];
+    for (const r of invRows) map.set(r.provider_id, r.payee_addr.toLowerCase());
+    return map;
   }
 
   /** On-chain transfers per operator wallet inside a window (ground truth

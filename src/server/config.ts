@@ -67,6 +67,47 @@ export const config = {
   blacklistBans7d: num("BLACKLIST_BANS_7D", 5),
   newMaxAgreements: num("NEW_MAX_AGREEMENTS", 3),
 
+  // Rotation scheduler (the ban system's replacement): /api/v1/ranking serves
+  // per-provider lottery weight, session TTL and rest state to the stones.
+  // Score v2 (no ban terms): efficiency 40% / session reliability 25% /
+  // volume 15% / speed 10% / freshness 10%. Tier thresholds on that score.
+  rotTierA: num("ROT_TIER_A", 70),
+  rotTierB: num("ROT_TIER_B", 40),
+  rotTierC: num("ROT_TIER_C", 20),
+  // Lottery weight = max(eps, (score/100)^gamma); "new" providers (not
+  // enough measured hours yet) get a fixed exploration weight instead.
+  rotWeightEps: num("ROT_WEIGHT_EPS", 0.05),
+  rotWeightGamma: num("ROT_WEIGHT_GAMMA", 2),
+  rotNewWeight: num("ROT_NEW_WEIGHT", 0.1),
+  // Confidence gate: below this many measured hours in 7d a provider is
+  // "new" — audition-length sessions regardless of provisional score.
+  rotConfMinHours7d: num("ROT_CONF_MIN_HOURS_7D", 2),
+  // Session TTL minutes per tier (0 = run until the 6h cycle restart) and
+  // rest minutes started when a provider's session ends.
+  rotTtlA: num("ROT_TTL_A_MIN", 0),
+  rotTtlB: num("ROT_TTL_B_MIN", 120),
+  rotTtlC: num("ROT_TTL_C_MIN", 45),
+  rotTtlD: num("ROT_TTL_D_MIN", 15),
+  rotTtlNew: num("ROT_TTL_NEW_MIN", 20),
+  rotRestA: num("ROT_REST_A_MIN", 0),
+  rotRestB: num("ROT_REST_B_MIN", 10),
+  rotRestC: num("ROT_REST_C_MIN", 60),
+  rotRestD: num("ROT_REST_D_MIN", 240),
+  rotRestNew: num("ROT_REST_NEW_MIN", 45),
+  // A provider whose newest agreement updated within this window is treated
+  // as holding a slot right now (> the 4 min debit-note interval, so a
+  // zero-work session doesn't flicker in and out of "active").
+  rotActiveSecs: num("ROT_ACTIVE_SECS", 360),
+  // Max concurrent slots per operator payout wallet (the anti-oversubscription
+  // lever — score is per identity and identities are cheap, the wallet isn't).
+  rotWalletMaxActive: num("ROT_WALLET_MAX_ACTIVE", 5),
+  // What the stones should assume for providers the ranking has never seen:
+  // a modest exploration weight and an audition-length TTL.
+  rotUnknownWeight: num("ROT_UNKNOWN_WEIGHT", 0.3),
+  rotUnknownTtlMin: num("ROT_UNKNOWN_TTL_MIN", 20),
+  // Only providers seen within this window are listed (absent = unknown).
+  rotSeenDays: num("ROT_SEEN_DAYS", 30),
+
   // Invoice/payment ingestion from the stones' yagna daemons (payment API).
   // The daemons keep little history (their data dirs are recreated on
   // redeploys), so the ban server persists everything it sees. Appkeys and

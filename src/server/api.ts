@@ -1,9 +1,10 @@
 import { existsSync } from "node:fs";
 import { join, normalize } from "node:path";
 import { config } from "./config.ts";
-import type { Store } from "./db.ts";
+import type { ProviderAggRow, Store } from "./db.ts";
 import type { Collector } from "./collector.ts";
 import { summarizeProvider } from "./scoring.ts";
+import { invalidateRanking, rankingFor } from "./ranking.ts";
 import { portalProviderReport } from "./portal.ts";
 import type {
   ActiveBansResponse,
@@ -132,6 +133,19 @@ function targetsIndex(store: Store): TargetsIndex {
   };
 }
 
+// The full aggregate sweep costs ~0.65 s of synchronous event-loop time, so
+// provider summaries and the rotation ranking share one 15-second cache of
+// the raw rows instead of each running their own sweep.
+let aggCache: { at: number; rows: ProviderAggRow[] } | null = null;
+
+function aggregatesCached(store: Store): ProviderAggRow[] {
+  if (aggCache && Date.now() - aggCache.at < 15_000) {
+    return aggCache.rows;
+  }
+  aggCache = { at: Date.now(), rows: store.providerAggregates() };
+  return aggCache.rows;
+}
+
 // Provider summaries are recomputed at most every 15 seconds.
 let summariesCache: { at: number; list: ProviderSummary[] } | null = null;
 
@@ -141,21 +155,21 @@ function providerSummaries(store: Store): ProviderSummary[] {
   }
   const targets = targetsIndex(store);
   const hw = store.hwMap();
-  const list = store
-    .providerAggregates()
-    .map((row) =>
-      summarizeProvider(
-        row,
-        targets.effectiveFor(row.provider_id),
-        hw.get(row.provider_id) ?? null,
-      ),
-    );
+  const list = aggregatesCached(store).map((row) =>
+    summarizeProvider(
+      row,
+      targets.effectiveFor(row.provider_id),
+      hw.get(row.provider_id) ?? null,
+    ),
+  );
   summariesCache = { at: Date.now(), list };
   return list;
 }
 
 export function invalidateSummaries(): void {
+  aggCache = null;
   summariesCache = null;
+  invalidateRanking();
 }
 
 const startedAt = Date.now();
@@ -234,6 +248,14 @@ export function createHandler(store: Store, collector: Collector) {
         collectedAt: collector.lastCollectedAt,
       };
       return sendJSON(200, summary);
+    }
+
+    // Rotation scheduler: per-provider lottery weight, session TTL and rest
+    // state. The stones poll this instead of /bans/active; the UI reads the
+    // same payload. Served from a short cache — see ranking.ts.
+    if (req.method === "GET" && path === "/ranking") {
+      const { body } = rankingFor(store, () => aggregatesCached(store));
+      return new Response(body, { headers: JSON_HEADERS });
     }
 
     if (req.method === "GET" && path === "/bans/active") {
