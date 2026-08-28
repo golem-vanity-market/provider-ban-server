@@ -82,6 +82,10 @@ export function openDb(path = config.dbPath): Database {
   }
   const db = new Database(path, { create: true });
   db.exec("PRAGMA journal_mode = WAL;");
+  // WAL defaults to synchronous=FULL, i.e. an fsync on every commit; the
+  // collector and the yagna poller commit continuously. NORMAL is the standard
+  // pairing for WAL - a crash can lose the last transactions, never the file.
+  db.exec("PRAGMA synchronous = NORMAL;");
   db.exec("PRAGMA busy_timeout = 5000;");
   db.exec(`
     CREATE TABLE IF NOT EXISTS providers (
@@ -191,6 +195,13 @@ export function openDb(path = config.dbPath): Database {
 export class Store {
   constructor(public db: Database) {}
 
+  // Every upsert below carries a WHERE on its DO UPDATE clause mirroring the
+  // SET clause line for line, so a row that would not change is not rewritten.
+  // SQLite has no no-op detection of its own: the yagna poller re-reads a 72 h
+  // invoice window from all ten daemons every 60 s (~18.6k rows, ~81 % of them
+  // already SETTLED and frozen), and the collector re-ingests every open
+  // agreement every 30 s. Without the guard each of those dirtied its page.
+  // Keep the WHERE in sync whenever the SET clause changes.
   private upsertProviderStmt = () =>
     this.db.query(`
       INSERT INTO providers (provider_id, name, first_seen, last_seen)
@@ -199,6 +210,9 @@ export class Store {
         name = COALESCE(excluded.name, providers.name),
         first_seen = MIN(providers.first_seen, excluded.first_seen),
         last_seen = MAX(providers.last_seen, excluded.last_seen)
+      WHERE providers.name IS NOT COALESCE(excluded.name, providers.name)
+         OR providers.first_seen IS NOT MIN(providers.first_seen, excluded.first_seen)
+         OR providers.last_seen IS NOT MAX(providers.last_seen, excluded.last_seen)
     `);
 
   upsertProvider(id: string, name: string | null, seenAt: string): void {
@@ -228,6 +242,17 @@ export class Store {
         cost_per_hour = COALESCE(excluded.cost_per_hour, agreements.cost_per_hour),
         duration_hours = MAX(agreements.duration_hours, excluded.duration_hours),
         successes = MAX(agreements.successes, excluded.successes)
+      WHERE agreements.provider_id IS NOT excluded.provider_id
+         OR agreements.node IS NOT COALESCE(excluded.node, agreements.node)
+         OR agreements.started_at IS NOT COALESCE(MIN(agreements.started_at, excluded.started_at), excluded.started_at)
+         OR agreements.last_updated IS NOT MAX(agreements.last_updated, excluded.last_updated)
+         OR agreements.work IS NOT MAX(agreements.work, excluded.work)
+         OR agreements.cost IS NOT MAX(agreements.cost, excluded.cost)
+         OR agreements.efficiency IS NOT COALESCE(excluded.efficiency, agreements.efficiency)
+         OR agreements.speed IS NOT COALESCE(excluded.speed, agreements.speed)
+         OR agreements.cost_per_hour IS NOT COALESCE(excluded.cost_per_hour, agreements.cost_per_hour)
+         OR agreements.duration_hours IS NOT MAX(agreements.duration_hours, excluded.duration_hours)
+         OR agreements.successes IS NOT MAX(agreements.successes, excluded.successes)
     `);
     const tx = this.db.transaction((batch: AgreementUpsert[]) => {
       for (const r of batch) {
@@ -848,6 +873,9 @@ export class Store {
         payee_addr = COALESCE(excluded.payee_addr, invoices.payee_addr),
         updated_at = CASE WHEN excluded.status != invoices.status
           THEN excluded.updated_at ELSE invoices.updated_at END
+      WHERE invoices.status IS NOT excluded.status
+         OR invoices.amount IS NOT excluded.amount
+         OR invoices.payee_addr IS NOT COALESCE(excluded.payee_addr, invoices.payee_addr)
     `);
     const now = new Date().toISOString();
     const tx = this.db.transaction((batch: InvoiceUpsert[]) => {
@@ -876,6 +904,7 @@ export class Store {
       INSERT INTO payments (payment_id, node, payee_addr, amount, paid_at)
       VALUES ($paymentId, $node, $payeeAddr, $amount, $paidAt)
       ON CONFLICT(payment_id) DO UPDATE SET amount = excluded.amount
+      WHERE payments.amount IS NOT excluded.amount
     `);
     const tx = this.db.transaction((batch: PaymentUpsert[]) => {
       for (const r of batch) {

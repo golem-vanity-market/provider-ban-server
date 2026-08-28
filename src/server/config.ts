@@ -37,9 +37,15 @@ export const config = {
     "https://stone.vanity.market/nmpdmxzhrm",
   ),
 
+  // The gatherer splits its 7-day history across two files (cold + recent) so
+  // it does not rewrite the whole thing every minute; seed reads both.
   seedEstimatorsPath: str(
     "SEED_ESTIMATORS_PATH",
     "/home/ubuntu/golem-vanity-market/vanity-nodes-gatherer/estimators.json",
+  ),
+  seedEstimatorsHotPath: str(
+    "SEED_ESTIMATORS_HOT_PATH",
+    "/home/ubuntu/golem-vanity-market/vanity-nodes-gatherer/estimators-hot.json",
   ),
 
   // Fleet-wide enforcement targets served to the stones when no explicit

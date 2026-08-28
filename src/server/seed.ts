@@ -24,17 +24,24 @@ export function seedFromEstimatorsFile(store: Store): void {
     store.setMeta("seeded_at", new Date().toISOString());
     return;
   }
-  console.log(`[seed] importing historical agreements from ${path} ...`);
+  const paths = [path, config.seedEstimatorsHotPath].filter(
+    (p) => p && existsSync(p),
+  );
+  console.log(
+    `[seed] importing historical agreements from ${paths.join(", ")} ...`,
+  );
   const started = Date.now();
-  let data: Record<string, SeedFileEntry>;
-  try {
-    data = JSON.parse(readFileSync(path, "utf-8")) as Record<
-      string,
-      SeedFileEntry
-    >;
-  } catch (e) {
-    console.error(`[seed] failed to read/parse ${path}:`, e);
-    return;
+  const data: Record<string, SeedFileEntry> = {};
+  for (const p of paths) {
+    try {
+      Object.assign(
+        data,
+        JSON.parse(readFileSync(p, "utf-8")) as Record<string, SeedFileEntry>,
+      );
+    } catch (e) {
+      console.error(`[seed] failed to read/parse ${p}:`, e);
+      return;
+    }
   }
   const rows: AgreementUpsert[] = [];
   for (const entry of Object.values(data)) {
