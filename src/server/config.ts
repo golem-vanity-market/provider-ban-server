@@ -80,6 +80,8 @@ export const config = {
   rotTierA: num("ROT_TIER_A", 70),
   rotTierB: num("ROT_TIER_B", 40),
   rotTierC: num("ROT_TIER_C", 20),
+  // A/B efficiency floor = global target + this gap, in TH/GLM.
+  rotEfficiencyTierGap: num("ROT_EFFICIENCY_TIER_GAP", 0.02),
   // Lottery weight = max(eps, (score/100)^gamma); "new" providers (not
   // enough measured hours yet) get a fixed exploration weight instead.
   rotWeightEps: num("ROT_WEIGHT_EPS", 0.05),

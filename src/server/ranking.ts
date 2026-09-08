@@ -144,13 +144,15 @@ export function computeRanking(
     // (reliability, volume, freshness) must never carry a provider that
     // measurably delivers below the fleet's enforcement target — that is
     // exactly the oversubscribed-operator shape (huge volume, always fresh,
-    // 4-5x worse TH/GLM). Below target => auditions only; below 2x => at
+    // 4-5x worse TH/GLM). Below target => auditions only; below target + gap => at
     // most tier C. "new" providers are exempt (no reliable data yet).
     const effMeasured = eff7;
     if (tier !== "new" && effMeasured !== null && globalEffTarget > 0) {
-      const ratio = effMeasured / globalEffTarget;
-      if (ratio < 1) tier = "D";
-      else if (ratio < 2 && (tier === "A" || tier === "B")) tier = "C";
+      if (effMeasured < globalEffTarget) tier = "D";
+      else if (
+        effMeasured < globalEffTarget + config.rotEfficiencyTierGap &&
+        (tier === "A" || tier === "B")
+      ) tier = "C";
     }
     let weight: number;
     if (tier === "new") weight = config.rotNewWeight;
